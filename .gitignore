@@ -1,3 +1,13 @@
+# Developer environments
+.idea
+.DS_Store
+
+# Others
+datasets/
+logs/
+checkpoints/
+models/pretrained/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
