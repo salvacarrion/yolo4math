@@ -29,7 +29,7 @@ def create_modules(module_defs):
             kernel_size = int(module_def["size"])
             pad = (kernel_size - 1) // 2
             modules.add_module(
-                f"conv_{module_i}",
+                "conv_".format(module_i),
                 nn.Conv2d(
                     in_channels=output_filters[-1],
                     out_channels=filters,
@@ -40,30 +40,30 @@ def create_modules(module_defs):
                 ),
             )
             if bn:
-                modules.add_module(f"batch_norm_{module_i}", nn.BatchNorm2d(filters, momentum=0.9, eps=1e-5))
+                modules.add_module("batch_norm_".format(module_i), nn.BatchNorm2d(filters, momentum=0.9, eps=1e-5))
             if module_def["activation"] == "leaky":
-                modules.add_module(f"leaky_{module_i}", nn.LeakyReLU(0.1))
+                modules.add_module("leaky_".format(module_i), nn.LeakyReLU(0.1))
 
         elif module_def["type"] == "maxpool":
             kernel_size = int(module_def["size"])
             stride = int(module_def["stride"])
             if kernel_size == 2 and stride == 1:
-                modules.add_module(f"_debug_padding_{module_i}", nn.ZeroPad2d((0, 1, 0, 1)))
+                modules.add_module("_debug_padding_".format(module_i), nn.ZeroPad2d((0, 1, 0, 1)))
             maxpool = nn.MaxPool2d(kernel_size=kernel_size, stride=stride, padding=int((kernel_size - 1) // 2))
-            modules.add_module(f"maxpool_{module_i}", maxpool)
+            modules.add_module("maxpool_".format(module_i), maxpool)
 
         elif module_def["type"] == "upsample":
             upsample = Upsample(scale_factor=int(module_def["stride"]), mode="nearest")
-            modules.add_module(f"upsample_{module_i}", upsample)
+            modules.add_module("upsample_".format(module_i), upsample)
 
         elif module_def["type"] == "route":
             layers = [int(x) for x in module_def["layers"].split(",")]
             filters = sum([output_filters[1:][i] for i in layers])
-            modules.add_module(f"route_{module_i}", EmptyLayer())
+            modules.add_module("route_".format(module_i), EmptyLayer())
 
         elif module_def["type"] == "shortcut":
             filters = output_filters[1:][int(module_def["from"])]
-            modules.add_module(f"shortcut_{module_i}", EmptyLayer())
+            modules.add_module("shortcut_".format(module_i), EmptyLayer())
 
         elif module_def["type"] == "yolo":
             anchor_idxs = [int(x) for x in module_def["mask"].split(",")]
@@ -75,7 +75,7 @@ def create_modules(module_defs):
             img_size = int(hyperparams["height"])
             # Define detection layer
             yolo_layer = YOLOLayer(anchors, num_classes, img_size)
-            modules.add_module(f"yolo_{module_i}", yolo_layer)
+            modules.add_module("yolo_".format(module_i), yolo_layer)
         # Register module list and number of output filters
         module_list.append(modules)
         output_filters.append(filters)

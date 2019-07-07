@@ -136,7 +136,7 @@ if __name__ == "__main__":
 
             log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(train_loader))
 
-            metric_table = [["Metrics", *[f"YOLO Layer {i}" for i in range(len(model.yolo_layers))]]]
+            metric_table = [["Metrics", *["YOLO Layer {}".format(i) for i in range(len(model.yolo_layers))]]]
 
             # Log metrics at each YOLO layer
             for i, metric in enumerate(metrics):
@@ -151,17 +151,17 @@ if __name__ == "__main__":
                 for j, yolo in enumerate(model.yolo_layers):
                     for name, metric in yolo.metrics.items():
                         if name != "grid_size":
-                            tensorboard_log += [(f"{name}_{j+1}", metric)]
+                            tensorboard_log += [("{}_{}".format(name, j+1), metric)]
                 tensorboard_log += [("loss", loss.item())]
                 logger.list_of_scalars_summary(tensorboard_log, batches_done)
 
             log_str += AsciiTable(metric_table).table
-            log_str += f"\nTotal loss {loss.item()}"
+            log_str += "\nTotal loss ".format(loss.item())
 
             # Determine approximate time left for epoch
             epoch_batches_left = len(train_loader) - (batch_i + 1)
             time_left = datetime.timedelta(seconds=epoch_batches_left * (time.time() - start_time) / (batch_i + 1))
-            log_str += f"\n---- ETA {time_left}"
+            log_str += "\n---- ETA {}".format(time_left)
 
             print(log_str)
 
@@ -192,7 +192,7 @@ if __name__ == "__main__":
             for i, c in enumerate(ap_class):
                 ap_table += [[c, dataset.class_names[c], "%.5f" % AP[i]]]
             print(AsciiTable(ap_table).table)
-            print(f"---- mAP {AP.mean()}")
+            print("---- mAP".format(AP.mean()))
 
         if epoch % opt.checkpoint_interval == 0:
-            torch.save(model.state_dict(), f"checkpoints/yolov3_ckpt_%d.pth" % epoch)
+            torch.save(model.state_dict(), "checkpoints/yolov3_ckpt_%d.pth" % epoch)
