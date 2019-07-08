@@ -141,6 +141,11 @@ if __name__ == "__main__":
         plt.axis("off")
         plt.gca().xaxis.set_major_locator(NullLocator())
         plt.gca().yaxis.set_major_locator(NullLocator())
+
+        # Save image
         filename = path.split("/")[-1].split(".")[0]
         plt.savefig("output/{}.eps".format(filename), bbox_inches="tight", pad_inches=0.0)
+
+        # Show image
+        plt.show()
         plt.close()
