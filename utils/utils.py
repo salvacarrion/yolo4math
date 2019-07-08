@@ -597,7 +597,9 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
 
     labels = []
     sample_metrics = []  # List of tuples (TP, confs, pred)
-    for batch_i, (_, imgs, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
+    # for batch_i, (_, imgs, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
+    for batch_i, (_, imgs, targets) in enumerate(dataloader):
+        print("\t- Evaluating batch #{}".format(batch_i))
 
         # Extract labels
         labels += targets[:, 1].tolist()
@@ -616,10 +618,12 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
 
         sample_metrics += get_batch_statistics(detections, targets, iou_threshold=iou_thres)
 
-    # Concatenate sample statistics
-    true_positives, pred_scores, pred_labels = [np.concatenate(x, 0) for x in list(zip(*sample_metrics))]
-    precision, recall, AP, f1, ap_class = ap_per_class(true_positives, pred_scores, pred_labels, labels)
-
+    if sample_metrics:
+        # Concatenate sample statistics
+        true_positives, pred_scores, pred_labels = [np.concatenate(x, axis=0) for x in list(zip(*sample_metrics))]
+        precision, recall, AP, f1, ap_class = ap_per_class(true_positives, pred_scores, pred_labels, labels)
+    else:
+        pass
     return precision, recall, AP, f1, ap_class
 
 

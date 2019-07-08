@@ -24,14 +24,14 @@ from torch.utils.data.sampler import SubsetRandomSampler
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=25, help="number of epochs")
-    parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
+    parser.add_argument("--epochs", type=int, default=50, help="number of epochs")
+    parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
     parser.add_argument("--gradient_accumulations", type=int, default=1, help="number of gradient accums before step")
 
     # Equations
     parser.add_argument("--dataset_path", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
-    parser.add_argument("--model_def", type=str, default="models/pretrained/yolo4math.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default="models/pretrained/yolov3.weights", help="path to weights file")
+    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-tiny/yolov4math-tiny.cfg", help="path to model definition file")
+    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3-tiny/yolov3-tiny.weights", help="path to weights file")
     parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
 
     # # COCO
@@ -40,14 +40,17 @@ if __name__ == "__main__":
     # parser.add_argument("--weights_path", type=str, default="models/pretrained/yolov3.weights", help="path to weights file")
     # parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
 
-    parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
+    parser.add_argument("--conf_thres", type=float, default=0.8, help="object confidence threshold")
+    parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
+
+    parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
     parser.add_argument("--img_size", type=int, default=1024, help="size of each image dimension")
-    parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between saving model weights")
-    parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
+    parser.add_argument("--checkpoint_interval", type=int, default=10, help="interval between saving model weights")
+    parser.add_argument("--evaluation_interval", type=int, default=5, help="interval evaluations on validation set")
     parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
     parser.add_argument("--multiscale_training", default=False, help="allow for multi-scale training")
     parser.add_argument("--shuffle_dataset", default=True, help="shuffle dataset")
-    parser.add_argument("--validation_split", default=0.2, help="validation split")
+    parser.add_argument("--validation_split", default=0.1, help="validation split")
     parser.add_argument("--random_seed", default=42, help="random seed")
     opt = parser.parse_args()
     print(opt)
@@ -64,13 +67,15 @@ if __name__ == "__main__":
 
     # Initiate model
     model = Darknet(config_path=opt.model_def, img_size=opt.img_size).to(device)
-    #
-    # # Load weights
-    # if opt.weights_path:
-    #     if opt.weights_path.endswith(".pth"):
-    #         model.load_state_dict(torch.load(opt.weights_path))
-    #     else:
-    #         model.load_darknet_weights(opt.weights_path, cutoff=None, free_layers=75)
+    model.apply(weights_init_normal)
+
+
+    # Load weights
+    if opt.weights_path:
+        if opt.weights_path.endswith(".pth"):
+            model.load_state_dict(torch.load(opt.weights_path))
+        else:
+            model.load_darknet_weights(opt.weights_path, cutoff=None, free_layers=10)
 
     # Get dataloader
     dataset = YOLODataset(opt.dataset_path, multiscale=opt.multiscale_training)
@@ -131,7 +136,11 @@ if __name__ == "__main__":
             loss.backward()
 
             # Sanity check II
-            #process_detections(img_paths, [fake_target(targets, opt.img_size)], opt.img_size, class_names, show_results=True, save_path=None)
+            # set_voc_format(outputs)
+            # detections = remove_low_conf(outputs, conf_thres=opt.conf_thres)
+            # detections = keep_max_class(detections)
+            # detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
+            # process_detections(img_paths, detections, opt.img_size, class_names, show_results=True, save_path=None)
 
             if batches_done % opt.gradient_accumulations:
                 # Accumulates gradient before each step
@@ -175,35 +184,39 @@ if __name__ == "__main__":
 
             model.seen += imgs.size(0)
 
-        if epoch % opt.evaluation_interval == 0:
-            print("\n---- Evaluating Model ----")
-            # Evaluate the model on the validation set
-            precision, recall, AP, f1, ap_class = evaluate(
-                model,
-                dataloader=validation_loader,
-                iou_thres=0.5,
-                conf_thres=0.5,
-                nms_thres=0.5,
-                img_size=opt.img_size,
-                batch_size=opt.batch_size,
-            )
-            evaluation_metrics = [
-                ("val_precision", precision.mean()),
-                ("val_recall", recall.mean()),
-                ("val_mAP", AP.mean()),
-                ("val_f1", f1.mean()),
-            ]
-            logger.list_of_scalars_summary(evaluation_metrics, epoch)
-
-            # Print class APs and mAP
-            ap_table = [["Index", "Class name", "AP"]]
-            for i, c in enumerate(ap_class):
-                ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
-            print(AsciiTable(ap_table).table)
-            print("---- mAP".format(AP.mean()))
+        # if epoch % opt.evaluation_interval == 0:
+        #     print("\n---- Evaluating Model ----")
+        #     # Evaluate the model on the validation set
+        #     precision, recall, AP, f1, ap_class = evaluate(
+        #         model,
+        #         dataloader=validation_loader,
+        #         iou_thres=0.5,
+        #         conf_thres=0.5,
+        #         nms_thres=0.5,
+        #         img_size=opt.img_size,
+        #         batch_size=opt.batch_size,
+        #     )
+        #     evaluation_metrics = [
+        #         ("val_precision", precision.mean()),
+        #         ("val_recall", recall.mean()),
+        #         ("val_mAP", AP.mean()),
+        #         ("val_f1", f1.mean()),
+        #     ]
+        #     logger.list_of_scalars_summary(evaluation_metrics, epoch)
+        #
+        #     # Print class APs and mAP
+        #     ap_table = [["Index", "Class name", "AP"]]
+        #     for i, c in enumerate(ap_class):
+        #         ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
+        #     print(AsciiTable(ap_table).table)
+        #     print("---- mAP".format(AP.mean()))
 
         if epoch % opt.checkpoint_interval == 0:
-            torch.save(model.state_dict(), "checkpoints/yolov3_ckpt_%d.pth" % epoch)
+            filename = "checkpoints/yolov3_ckpt_{}.pth".format(epoch)
+            print("Saving model: {}".format(filename))
+            torch.save(model.state_dict(), filename)
 
     # Save last mode
-    torch.save(model.state_dict(), "checkpoints/yolov3_ckpt_{}.pth".format('last'))
+    filename = "checkpoints/yolov3_ckpt_{}.pth".format("last")
+    print("Saving model: {}".format(filename))
+    torch.save(model.state_dict(), filename)

@@ -20,11 +20,11 @@ from torch.autograd import Variable
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image_folder", type=str, default="datasets/coco/train2014", help="path to dataset")
-    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-tiny/yolov3-tiny.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3-tiny/yolov3-tiny.weights", help="path to weights file")
-    parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
-    parser.add_argument("--conf_thres", type=float, default=0.8, help="object confidence threshold")
+    parser.add_argument("--image_folder", type=str, default="datasets/equations/resized/1024x1024-test", help="path to dataset")
+    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-tiny/yolov4math-tiny.cfg", help="path to model definition file")
+    parser.add_argument("--weights_path", type=str, default="checkpoints/yolov3_ckpt_1.pth", help="path to weights file")
+    parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
+    parser.add_argument("--conf_thres", type=float, default=0.6, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--batch_size", type=int, default=2, help="size of the batches")
     parser.add_argument("--n_cpu", type=int, default=0, help="number of cpu threads to use during batch generation")
@@ -74,9 +74,9 @@ if __name__ == "__main__":
         with torch.no_grad():
             detections = model(input_imgs)
             set_voc_format(detections)
-            detections = remove_low_conf(detections, opt.conf_thres)
+            detections = remove_low_conf(detections, conf_thres=opt.conf_thres)
             detections = keep_max_class(detections)
-            detections = non_max_suppression(detections)
+            detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
 
         # Log progress
         current_time = time.time()
@@ -87,6 +87,9 @@ if __name__ == "__main__":
         # Save image and detections
         img_paths.extend(paths)
         img_detections.extend(detections)
+
+        if batch_i == 2:
+            break
 
     # Show detections
     process_detections(img_paths, img_detections, opt.img_size, class_names, show_results=True, save_path=None)
