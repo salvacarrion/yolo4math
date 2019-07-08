@@ -16,3 +16,8 @@ pillow
 nms
 scipy
 scikit-learn
+
+# Testing
+tensorboardX
+tb-nightly
+future

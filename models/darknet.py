@@ -132,7 +132,7 @@ class YOLOLayer(nn.Module):
         self.grid_x = torch.arange(g).repeat(g, 1).view([1, 1, g, g]).type(FloatTensor)
         self.grid_y = torch.arange(g).repeat(g, 1).t().view([1, 1, g, g]).type(FloatTensor)
 
-        # Scale anchors by stride
+        # Scale anchors into the grid space
         self.scaled_anchors = FloatTensor([(a_w / self.stride, a_h / self.stride) for a_w, a_h in self.anchors])
 
         # Select W, H anchors
@@ -157,7 +157,7 @@ class YOLOLayer(nn.Module):
         )  # => images, anchors, grid_size, grid_size, num_classes + 5
 
         # Get outputs
-        x = torch.sigmoid(prediction[..., 0])  # Center x
+        x = torch.sigmoid(prediction[..., 0])  # Relative center x (0.3)
         y = torch.sigmoid(prediction[..., 1])  # Center y
         w = prediction[..., 2]  # Width
         h = prediction[..., 3]  # Height
@@ -168,11 +168,11 @@ class YOLOLayer(nn.Module):
         if grid_size != self.grid_size:
             self.compute_grid_offsets(grid_size, cuda=x.is_cuda)
 
-        # Add offset and scale with anchors -----------------------------------
+        # Convert boxes to absolute grid space ([0..31])
         # select x, y, w, h
         pred_boxes = FloatTensor(prediction[..., :4].shape)
-        # From cell relative to abs relative (0.3 in cell 5 => 5.3)
-        pred_boxes[..., 0] = x.data + self.grid_x
+        # From cell relative to abs grid space (0.3 in cell 5 => 5.3)
+        pred_boxes[..., 0] = x.data + self.grid_x  # Relative center (0.3) + top-left-corner (grid_i: 5) => 5.3
         pred_boxes[..., 1] = y.data + self.grid_y
         # Propagate to all images, anchor[i] to box[i], and then propagate value k [1,1] to grid (S, S)
         pred_boxes[..., 2] = torch.exp(w.data) * self.anchor_w
@@ -180,7 +180,7 @@ class YOLOLayer(nn.Module):
 
         output = torch.cat(
             (
-                pred_boxes.view(num_samples, -1, 4) * self.stride,  # images, (hypothesis), xywh
+                pred_boxes.view(num_samples, -1, 4) * self.stride,  # From grid space to input_image space // images, (hypothesis), xywh
                 pred_conf.view(num_samples, -1, 1),  # images, (hypothesis), obj_conf
                 pred_cls.view(num_samples, -1, self.num_classes),  # images, (hypothesis), classes
             ),
@@ -273,7 +273,7 @@ class Darknet(nn.Module):
         yolo_outputs = to_cpu(torch.cat(yolo_outputs, 1))
         return yolo_outputs if targets is None else (loss, yolo_outputs)
 
-    def load_darknet_weights(self, weights_path, cutoff=None):
+    def load_darknet_weights(self, weights_path, cutoff=None, free_layers=None):
         """Parses and loads the weights stored in 'weights_path'"""
 
         # Open the weights file
@@ -287,6 +287,12 @@ class Darknet(nn.Module):
         for i, (module_def, module) in enumerate(zip(self.module_defs, self.module_list)):
             if i == cutoff:
                 break
+
+            # Freeze layers
+            if i <= free_layers:
+                for param in module.parameters():
+                    param.requires_grad = False
+
             if module_def["type"] == "convolutional":
                 conv_layer = module[0]
                 if module_def["batch_normalize"]:

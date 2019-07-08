@@ -226,7 +226,7 @@ def rescale_boxes(boxes, current_shape, original_shape):
 
 
 def xywh2xyxy(x):
-    # From (center_x_abs, center_y_abs, w_abs, w_abs) => (x1_abs, y1_abs, x2_abs, y2_abs)
+    # From [ABS/REL](center_x, center_y, w, h) => (x1, y1, x2, y2)
     y = x.new(x.shape)  # copy array shape
     y[..., 0] = x[..., 0] - x[..., 2] / 2  # x1 = center_x - width/2
     y[..., 1] = x[..., 1] - x[..., 3] / 2  # y1 = center_y - height/2
@@ -556,8 +556,8 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
         # Extract labels
         labels += targets[:, 1].tolist()
         # Rescale target
-        targets[:, 2:] = xywh2xyxy(targets[:, 2:])
-        targets[:, 2:] *= img_size
+        targets[:, 2:] = xywh2xyxy(targets[:, 2:])  # From REL [xywh] to REL [xyxy]
+        targets[:, 2:] *= img_size  # From REL to ABS
 
         imgs = Variable(imgs.type(Tensor), requires_grad=False)
 

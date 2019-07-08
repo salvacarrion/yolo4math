@@ -77,11 +77,11 @@ class YOLODataset(Dataset):
 
         # Convert bboxes to Tensor (YOLO format)
         bboxes = torch.from_numpy(np.array(bboxes))
-        bboxes = coco2cxcywh(bboxes)  # TO => ABS(center_x, center_y, w, h)
+        bboxes = coco2cxcywh(bboxes)  # ABS(x, y, w, h) => ABS(center_x, center_y, w, h)
 
         # Relative bboxes
         if not self.abs_coords:
-            bboxes = abs2rel(bboxes, h, w)
+            bboxes = abs2rel(bboxes, h, w)  # => REL(center_x, center_y, w, h)
 
         # Convert classes_id to Tensor
         classes_id = torch.from_numpy(np.array(classes_id))

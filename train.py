@@ -34,8 +34,8 @@ if __name__ == "__main__":
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
     parser.add_argument("--multiscale_training", default=False, help="allow for multi-scale training")
-    parser.add_argument("--shuffle_dataset", default=False, help="shuffle dataset")
-    parser.add_argument("--validation_split", default=0.2, help="validation split")
+    parser.add_argument("--shuffle_dataset", default=True, help="shuffle dataset")
+    parser.add_argument("--validation_split", default=0.1, help="validation split")
     parser.add_argument("--random_seed", default=42, help="random seed")
     opt = parser.parse_args()
     print(opt)
@@ -63,7 +63,7 @@ if __name__ == "__main__":
         if opt.pretrained_weights.endswith(".pth"):
             model.load_state_dict(torch.load(opt.pretrained_weights))
         else:
-            model.load_darknet_weights(opt.pretrained_weights, cutoff=75)
+            model.load_darknet_weights(opt.pretrained_weights, cutoff=None, free_layers=75)
 
     # Data augmentation
     data_aug = A.Compose([
@@ -111,11 +111,12 @@ if __name__ == "__main__":
         "conf_noobj",
     ]
 
-    # Train model
+    # Start training
     for epoch in range(opt.epochs):
         model.train()
         start_time = time.time()
 
+        # Train model
         for batch_i, (_, imgs, targets) in enumerate(train_loader):
             batches_done = len(train_loader) * epoch + batch_i
 
