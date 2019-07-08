@@ -13,8 +13,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from matplotlib.ticker import NullLocator
 
 from albumentations.augmentations.bbox_utils import convert_bboxes_to_albumentations, convert_bboxes_from_albumentations
 
@@ -174,6 +176,80 @@ def abs2rel(x, height, width):
     y[..., 3] = x[..., 3]/height
     return y
 
+def load_classes(path):
+    """
+    Loads class labels at 'path'
+    """
+    fp = open(path, 'r')
+    names = [c.strip() for c in fp.read().split("\n") if len(c.strip()) > 0]
+    return names
+
+
+def remove_low_conf(prediction, conf_thres=0.5):
+    # Filter out confidence scores below threshold
+    output = []
+    for image_i, image_pred in enumerate(prediction):
+        image_preds = image_pred[image_pred[:, 4] >= conf_thres]
+        output.append(image_preds)
+    return output
+
+
+def set_voc_format(prediction):
+    # prediction = (image_i, hypothesis_i, (x,y,w,h,obj_conf, classes)
+    # => take all all dimentions 'till last one, and then, take from the 0th to 4th (x,y,w,h)
+    xywh = prediction[..., :4]
+    prediction[..., :4] = xywh2xyxy(xywh)
+
+
+def keep_max_class(image_predictions):
+    """
+    Creates a list of new tensors that contain the dimensions of the bbox, the object confidence and the
+    maximum class proability with its index.
+    """
+    max_class_predictions = []
+    for i, hypothesis in enumerate(image_predictions):
+        # Box coordinates
+        bboxes = hypothesis[:, :4]
+
+        # Object confidence times class confidence
+        objects_conf = hypothesis[:, 4].unsqueeze(1)
+
+        # Get probabilities and max class
+        class_probs, class_idxs, = hypothesis[:, 5:].max(dim=1, keepdim=True)
+
+        # Join: (x1,y1,x2,y2, obj_conf) + class_conf + class_idx
+        max_pred = torch.cat((bboxes, objects_conf, class_probs, class_idxs.float()), dim=1)
+        max_class_predictions.append(max_pred)
+
+    return max_class_predictions
+
+
+def non_max_suppression(image_predictions, nms_thres=0.5):
+    output = []
+
+    for i, hypothesis in enumerate(image_predictions):
+
+        keep_boxes = []
+        detections = hypothesis.clone()
+        while detections.size(0):
+            large_overlap = bbox_iou(detections[0, :4].unsqueeze(0), detections[:, :4]) > nms_thres  # Get bboxes that overlap by more than a threshold
+            label_match = detections[0, -1] == detections[:, -1]  # Get prediction of class == class_pred[0]
+
+            # Indices of boxes large IOUs and matching labels (same class)
+            invalid = large_overlap & label_match
+            weights = detections[invalid, 4:5]  # Object confidence as weight
+
+            # Merge overlapping bboxes by order of confidence (weighted average)
+            detections[0, :4] = (weights * detections[invalid, :4]).sum(0) / weights.sum()
+            keep_boxes += [detections[0]]
+            detections = detections[~invalid]  # remove invalid bboxes
+
+        if keep_boxes:
+            output.append(torch.stack(keep_boxes))
+    return output
+
+
+
 
 #############################################
 #############################################
@@ -187,13 +263,7 @@ def to_cpu(tensor):
     return tensor.detach().cpu()
 
 
-def load_classes(path):
-    """
-    Loads class labels at 'path'
-    """
-    fp = open(path, 'r')
-    names = [c.strip() for c in fp.read().split("\n") if len(c.strip()) > 0]
-    return names
+
 
 
 def weights_init_normal(m):
@@ -235,7 +305,7 @@ def xywh2xyxy(x):
     return y
 
 
-def non_max_suppression(prediction, conf_thres=0.5, nms_thres=0.4):
+def non_max_suppression2(prediction, conf_thres=0.5, nms_thres=0.4):
     """
     Removes detections with lower object confidence score than 'conf_thres' and performs
     Non-Maximum Suppression to further filter detections.
@@ -441,40 +511,6 @@ def bbox_iou(box1, box2, x1y1x2y2=True):
     return iou
 
 
-def remove_low_conf(prediction, conf_thres=0.5):
-    # Filter out confidence scores below threshold
-    output = []
-    for image_i, image_pred in enumerate(prediction):
-        image_preds = image_pred[image_pred[:, 4] >= conf_thres]
-        output.append(image_preds)
-    return output
-
-
-def set_voc_format(prediction):
-    # prediction = (image_i, hypothesis_i, (x,y,w,h,obj_conf, classes)
-    # => take all all dimentions 'till last one, and then, take from the 0th to 4th (x,y,w,h)
-    xywh = prediction[..., :4]
-    prediction[..., :4] = xywh2xyxy(xywh)
-
-
-def remove_useless_data(detections):
-    for i, image_pred in enumerate(detections):
-        # Object confidence times class confidence
-        objects_conf = image_pred[:, 4]
-        # Get probabilities and max class
-        class_probs, class_idxs, = image_pred[:, 5:].max(1)
-
-        # Compute score
-        score = objects_conf * class_probs  # Real prob
-
-        # Sort prediction by score (descending)
-        image_pred = image_pred[(-score).argsort()]
-
-        # Get max probability and index
-        class_confs, class_preds = image_pred[:, 5:].max(1, keepdim=True)
-
-        # Join: (x1,y1,x2,y2, obj_conf) + class_conf + class_idx
-        detections[i] = torch.cat((image_pred[:, :5], class_confs.float(), class_preds.float()), 1)
 
 def build_targets(pred_boxes, pred_cls, target, anchors, ignore_thres):
 
@@ -562,13 +598,78 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
         imgs = Variable(imgs.type(Tensor), requires_grad=False)
 
         with torch.no_grad():
-            outputs = model(imgs)
-            outputs = non_max_suppression(outputs, conf_thres=conf_thres, nms_thres=nms_thres)
+            detections = model(imgs)
+            set_voc_format(detections)
+            detections = remove_low_conf(detections, conf_thres=conf_thres)
+            detections = keep_max_class(detections)
+            detections = non_max_suppression(detections, nms_thres=nms_thres)
 
-        sample_metrics += get_batch_statistics(outputs, targets, iou_threshold=iou_thres)
+        sample_metrics += get_batch_statistics(detections, targets, iou_threshold=iou_thres)
 
     # Concatenate sample statistics
     true_positives, pred_scores, pred_labels = [np.concatenate(x, 0) for x in list(zip(*sample_metrics))]
     precision, recall, AP, f1, ap_class = ap_per_class(true_positives, pred_scores, pred_labels, labels)
 
     return precision, recall, AP, f1, ap_class
+
+
+def process_detections(imgs, img_detections, img_size, class_names, show_results=False, save_path=False):
+    # Bounding-box colors
+    cmap = plt.get_cmap("tab20b")
+    colors = [cmap(i) for i in np.linspace(0, 1, 20)]
+
+    # Iterate through images and save plot of detections
+    for img_i, (path, detections) in enumerate(zip(imgs, img_detections)):
+
+        print("Image #{}: {}".format(img_i, path))
+
+        # Create plot
+        img = np.array(Image.open(path))
+        plt.figure()
+        fig, ax = plt.subplots(1)
+        ax.imshow(img)
+
+        # Draw bounding boxes and labels of detections
+        if detections is not None:
+            # Rescale boxes to original image
+            detections = rescale_boxes(detections, (img_size, img_size), img.shape[:2])
+            unique_labels = detections[:, -1].cpu().unique()
+            n_cls_preds = len(unique_labels)
+            bbox_colors = random.sample(colors, n_cls_preds)
+            for x1, y1, x2, y2, conf, cls_conf, cls_pred in detections:
+                print("\t+ Label: %s, Conf: %.5f" % (class_names[int(cls_pred)], cls_conf.item()))
+
+                # Get box dimensions
+                box_w = x2 - x1
+                box_h = y2 - y1
+
+                color = bbox_colors[int(np.where(unique_labels == int(cls_pred))[0])]
+                # Create a Rectangle patch
+                bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2, edgecolor=color, facecolor="none")
+                # Add the bbox to the plot
+                ax.add_patch(bbox)
+                # Add label
+                plt.text(
+                    x1,
+                    y1,
+                    s=class_names[int(cls_pred)],
+                    color="white",
+                    verticalalignment="top",
+                    bbox={"color": color, "pad": 0},
+                )
+
+        # Save generated image with detections
+        plt.axis("off")
+        plt.gca().xaxis.set_major_locator(NullLocator())
+        plt.gca().yaxis.set_major_locator(NullLocator())
+
+        # Save image
+        if save_path:
+            filename = path.split("/")[-1].split(".")[0]
+            plt.savefig("{}/{}.eps".format(save_path, filename), bbox_inches="tight", pad_inches=0.0)
+
+        # Show image
+        if show_results:
+            plt.show()
+
+        plt.close()
