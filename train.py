@@ -24,10 +24,22 @@ from torch.utils.data.sampler import SubsetRandomSampler
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
+    parser.add_argument("--epochs", type=int, default=25, help="number of epochs")
     parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
     parser.add_argument("--gradient_accumulations", type=int, default=1, help="number of gradient accums before step")
-    parser.add_argument("--pretrained_weights", type=str, help="if specified starts from checkpoint model")
+
+    # Equations
+    parser.add_argument("--dataset_path", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
+    parser.add_argument("--model_def", type=str, default="models/pretrained/yolo4math.cfg", help="path to model definition file")
+    parser.add_argument("--weights_path", type=str, default="models/pretrained/yolov3.weights", help="path to weights file")
+    parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
+
+    # # COCO
+    # parser.add_argument("--dataset_path", type=str, default="datasets/coco/train2014", help="path to dataset")
+    # parser.add_argument("--model_def", type=str, default="models/pretrained/model.cfg", help="path to model definition file")
+    # parser.add_argument("--weights_path", type=str, default="models/pretrained/yolov3.weights", help="path to weights file")
+    # parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
+
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--img_size", type=int, default=1024, help="size of each image dimension")
     parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between saving model weights")
@@ -35,7 +47,7 @@ if __name__ == "__main__":
     parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
     parser.add_argument("--multiscale_training", default=False, help="allow for multi-scale training")
     parser.add_argument("--shuffle_dataset", default=True, help="shuffle dataset")
-    parser.add_argument("--validation_split", default=0.1, help="validation split")
+    parser.add_argument("--validation_split", default=0.2, help="validation split")
     parser.add_argument("--random_seed", default=42, help="random seed")
     opt = parser.parse_args()
     print(opt)
@@ -47,32 +59,21 @@ if __name__ == "__main__":
     os.makedirs("output", exist_ok=True)
     os.makedirs("checkpoints", exist_ok=True)
 
-    # Model data
-    model_cfg = 'models/pretrained/yolo4math.cfg'
-    model_weights = 'models/pretrained/yolov3.weights'
-    opt.pretrained_weights = model_weights
-
     # Get data configuration
-    dataset_path = 'datasets/equations/resized/1024x1024'
+    class_names = load_classes(opt.class_path)
 
     # Initiate model
-    model = Darknet(config_path=model_cfg, img_size=opt.img_size).to(device)
-
-    # If specified we start from checkpoint
-    if opt.pretrained_weights:
-        if opt.pretrained_weights.endswith(".pth"):
-            model.load_state_dict(torch.load(opt.pretrained_weights))
-        else:
-            model.load_darknet_weights(opt.pretrained_weights, cutoff=None, free_layers=75)
-
-    # Data augmentation
-    data_aug = A.Compose([
-        A.LongestMaxSize(max_size=opt.img_size, interpolation=cv2.INTER_AREA),
-        A.PadIfNeeded(min_height=opt.img_size, min_width=opt.img_size, border_mode=cv2.BORDER_CONSTANT, value=(128, 128, 128))
-    ], p=1)
+    model = Darknet(config_path=opt.model_def, img_size=opt.img_size).to(device)
+    #
+    # # Load weights
+    # if opt.weights_path:
+    #     if opt.weights_path.endswith(".pth"):
+    #         model.load_state_dict(torch.load(opt.weights_path))
+    #     else:
+    #         model.load_darknet_weights(opt.weights_path, cutoff=None, free_layers=75)
 
     # Get dataloader
-    dataset = YOLODataset(dataset_path, transform=data_aug, multiscale=opt.multiscale_training)
+    dataset = YOLODataset(opt.dataset_path, multiscale=opt.multiscale_training)
 
     # Creating data indices for training and validation splits:
     dataset_size = len(dataset)
@@ -117,14 +118,20 @@ if __name__ == "__main__":
         start_time = time.time()
 
         # Train model
-        for batch_i, (_, imgs, targets) in enumerate(train_loader):
+        for batch_i, (img_paths, imgs, targets) in enumerate(train_loader):
             batches_done = len(train_loader) * epoch + batch_i
 
             imgs = Variable(imgs.to(device))
             targets = Variable(targets.to(device), requires_grad=False)
 
+            # Sanity check I
+            #process_detections(img_paths, [fake_target(targets, opt.img_size)], opt.img_size, class_names, show_results=True, save_path=None)
+
             loss, outputs = model(imgs, targets)
             loss.backward()
+
+            # Sanity check II
+            #process_detections(img_paths, [fake_target(targets, opt.img_size)], opt.img_size, class_names, show_results=True, save_path=None)
 
             if batches_done % opt.gradient_accumulations:
                 # Accumulates gradient before each step
@@ -191,9 +198,12 @@ if __name__ == "__main__":
             # Print class APs and mAP
             ap_table = [["Index", "Class name", "AP"]]
             for i, c in enumerate(ap_class):
-                ap_table += [[c, dataset.class_names[c], "%.5f" % AP[i]]]
+                ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
             print(AsciiTable(ap_table).table)
             print("---- mAP".format(AP.mean()))
 
         if epoch % opt.checkpoint_interval == 0:
             torch.save(model.state_dict(), "checkpoints/yolov3_ckpt_%d.pth" % epoch)
+
+    # Save last mode
+    torch.save(model.state_dict(), "checkpoints/yolov3_ckpt_{}.pth".format('last'))

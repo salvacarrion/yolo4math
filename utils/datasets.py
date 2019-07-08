@@ -37,16 +37,24 @@ class YOLODataset(Dataset):
 
         # Load dataset
         json_dataset = load_dataset(folder_path + '/train.json')
-        self.images = json_dataset['images']
+        self.img_files = json_dataset['images']
         self.annotations = json_dataset['annotations']
         self.class_names = json_dataset['categories']
 
+        # Data format
+        self.data_format = A.Compose([
+            A.LongestMaxSize(max_size=self.img_size, interpolation=cv2.INTER_AREA),
+            A.PadIfNeeded(min_height=self.img_size, min_width=self.img_size, border_mode=cv2.BORDER_CONSTANT,
+                          value=(128, 128, 128))
+        ], p=1)
+
+
     def __getitem__(self, index):
-        image_data = self.images[index]
+        image_data = self.img_files[index]
         image_id = str(image_data['id'])
         image_path = os.path.join(self.wd, image_data['filename'])
         bboxes = [x['bbox'] for x in self.annotations[image_id]]
-        classes_id = [int(x['category_id']) for x in self.annotations[image_id]]
+        classes_id = torch.from_numpy(np.array([int(x['category_id']) for x in self.annotations[image_id]]))
 
         # Load image as RGB
         img = np.asarray(Image.open(image_path).convert('RGB'))  #L
@@ -56,20 +64,22 @@ class YOLODataset(Dataset):
             img = img.unsqueeze(0)
             img = img.expand((3, img.shape[1:]))
 
+        # Convert bboxes to albumentations [x_rel, y_rel, width_rel, height_rel]
+        bboxes = convert_bboxes_to_albumentations(bboxes, source_format='coco', rows=img.shape[0], cols=img.shape[1])
+
+        # Default image format
+        img_format = self.data_format(image=img, bboxes=bboxes)
+        img = img_format['image']
+        bboxes = img_format['bboxes']
+
         if self.transform:
-            # Convert bboxes to albumentations
-            bboxes = convert_bboxes_to_albumentations(bboxes, source_format='coco',
-                                                      rows=img.shape[0], cols=img.shape[1])
-
             # Perform augmentation
-            augmented_data = self.transform(image=img, bboxes=bboxes)
-            img = augmented_data['image']
+            img_format = self.transform(image=img, bboxes=bboxes)
+            img = img_format['image']
+            bboxes = img_format['bboxes']
 
-            # Convert bboxes from albumentations to coco
-            bboxes = convert_bboxes_from_albumentations(augmented_data['bboxes'],
-                                                        target_format='coco',  # COCO: [x_min, y_min, width, height]
-                                                        rows=img.shape[0],
-                                                        cols=img.shape[1])
+        # Convert bboxes from albumentations to coco [x_min, y_min, width, height]
+        bboxes = convert_bboxes_from_albumentations(bboxes, target_format='coco', rows=img.shape[0], cols=img.shape[1])
 
         # Convert image (PIL/Numpy) to PyTorch Tensor
         img = transforms.ToTensor()(img)
@@ -83,19 +93,15 @@ class YOLODataset(Dataset):
         if not self.abs_coords:
             bboxes = abs2rel(bboxes, h, w)  # => REL(center_x, center_y, w, h)
 
-        # Convert classes_id to Tensor
-        classes_id = torch.from_numpy(np.array(classes_id))
-
         # Transform targets (bboxes)
-        targets = torch.zeros((len(bboxes), 6))
+        targets = torch.zeros((len(bboxes), 6))  # 0(batch), class_id + xywh (REL)
         targets[:, 1] = classes_id
         targets[:, 2:] = bboxes
 
-        #print("\timage shape: {};\ttargets: {}".format(img.shape, targets.shape))
         return image_path, img, targets
 
     def collate_fn(self, batch):
-        paths, imgs, targets = list(zip(*batch))
+        img_paths, imgs, targets = list(zip(*batch))
 
         # Get targets as a list of tensors
         targets = [boxes for boxes in targets if boxes is not None]
@@ -124,10 +130,10 @@ class YOLODataset(Dataset):
         imgs = torch.stack([img for img in imgs])
 
         self.batch_count += 1
-        return paths, imgs, targets
+        return img_paths, imgs, targets
 
     def __len__(self):
-        return len(self.images)
+        return len(self.img_files)
 
 
 class ImageFolder(Dataset):
@@ -137,7 +143,7 @@ class ImageFolder(Dataset):
         self.class_names = class_names
         self.transform = transform
 
-        # Data augmentation
+        # Data format
         self.data_format = A.Compose([
             A.LongestMaxSize(max_size=self.img_size, interpolation=cv2.INTER_AREA),
             A.PadIfNeeded(min_height=self.img_size, min_width=self.img_size, border_mode=cv2.BORDER_CONSTANT,

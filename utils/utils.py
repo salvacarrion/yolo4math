@@ -208,6 +208,10 @@ def keep_max_class(image_predictions):
     """
     max_class_predictions = []
     for i, hypothesis in enumerate(image_predictions):
+        # If none are remaining => process next image
+        if not hypothesis.size(0):
+            continue
+
         # Box coordinates
         bboxes = hypothesis[:, :4]
 
@@ -228,6 +232,9 @@ def non_max_suppression(image_predictions, nms_thres=0.5):
     output = []
 
     for i, hypothesis in enumerate(image_predictions):
+        # If none are remaining => process next image
+        if not hypothesis.size(0):
+            continue
 
         keep_boxes = []
         detections = hypothesis.clone()
@@ -276,7 +283,10 @@ def weights_init_normal(m):
 
 
 def rescale_boxes(boxes, current_shape, original_shape):
-    """ Rescales bounding boxes to the original shape """
+    """
+    Rescales bounding boxes to the original shape
+    Expects boxes in VOC format xyxy
+    """
     orig_h, orig_w = original_shape
     this_h, this_w = current_shape
 
@@ -613,20 +623,20 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
     return precision, recall, AP, f1, ap_class
 
 
-def process_detections(imgs, img_detections, img_size, class_names, show_results=False, save_path=False):
+def process_detections(img_paths, img_detections, img_size, class_names, show_results=False, save_path=False, txt_y_offset=0.6):
     # Bounding-box colors
     cmap = plt.get_cmap("tab20b")
     colors = [cmap(i) for i in np.linspace(0, 1, 20)]
 
     # Iterate through images and save plot of detections
-    for img_i, (path, detections) in enumerate(zip(imgs, img_detections)):
+    for img_i, (path, detections) in enumerate(zip(img_paths, img_detections)):
 
         print("Image #{}: {}".format(img_i, path))
 
         # Create plot
         img = np.array(Image.open(path))
-        plt.figure()
-        fig, ax = plt.subplots(1)
+        fig, ax = plt.subplots()
+        r = fig.canvas.get_renderer()
         ax.imshow(img)
 
         # Draw bounding boxes and labels of detections
@@ -649,7 +659,7 @@ def process_detections(imgs, img_detections, img_size, class_names, show_results
                 # Add the bbox to the plot
                 ax.add_patch(bbox)
                 # Add label
-                plt.text(
+                txt = plt.text(
                     x1,
                     y1,
                     s=class_names[int(cls_pred)],
@@ -657,6 +667,9 @@ def process_detections(imgs, img_detections, img_size, class_names, show_results
                     verticalalignment="top",
                     bbox={"color": color, "pad": 0},
                 )
+                txt_bbox = txt.get_window_extent(renderer=r)
+                txt.set_position((x1, y1-txt_bbox.height*txt_y_offset))
+
 
         # Save generated image with detections
         plt.axis("off")
@@ -672,4 +685,13 @@ def process_detections(imgs, img_detections, img_size, class_names, show_results
         if show_results:
             plt.show()
 
-        plt.close()
+
+def fake_target(x, img_size=None):
+    t = torch.zeros((len(x), 7))  # xywh + ocj_conf(1) + class_prob + class_id (this is from dataloader)
+    scale = img_size if img_size else 1.0
+    t[:, 0:4] = x[:, 2:] * scale  # From relative to abs
+    t[:, 4] = 1.0
+    t[:, 5] = 1.0
+    t[:, 6] = x[:, 1]
+    set_voc_format(t)
+    return t
