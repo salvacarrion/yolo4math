@@ -289,7 +289,7 @@ class Darknet(nn.Module):
                 break
 
             # Freeze layers
-            if i <= free_layers:
+            if free_layers and i <= free_layers:
                 for param in module.parameters():
                     param.requires_grad = False
 

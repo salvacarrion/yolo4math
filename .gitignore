@@ -3,10 +3,12 @@
 .DS_Store
 
 # Others
-datasets/
+datasets/equations/raw/
+datasets/equations/resized/
 logs/
-checkpoints/
-models/pretrained/
+checkpoints
+output/
+models/pretrained/*.weights
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

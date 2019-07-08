@@ -48,7 +48,7 @@ class YOLODataset(Dataset):
         bboxes = [x['bbox'] for x in self.annotations[image_id]]
         classes_id = [int(x['category_id']) for x in self.annotations[image_id]]
 
-        # Load image as grayscale
+        # Load image as RGB
         img = np.asarray(Image.open(image_path).convert('RGB'))  #L
 
         # Handle images with less than three channels
@@ -129,3 +129,44 @@ class YOLODataset(Dataset):
     def __len__(self):
         return len(self.images)
 
+
+class ImageFolder(Dataset):
+    def __init__(self, folder_path, transform=None, class_names=None, img_size=416):
+        self.images = []
+        self.img_size = img_size
+        self.class_names = class_names
+        self.transform = transform
+
+        # Data augmentation
+        self.data_format = A.Compose([
+            A.LongestMaxSize(max_size=self.img_size, interpolation=cv2.INTER_AREA),
+            A.PadIfNeeded(min_height=self.img_size, min_width=self.img_size, border_mode=cv2.BORDER_CONSTANT,
+                          value=(128, 128, 128))
+        ], p=1)
+
+        # Get images
+        for file in os.listdir(folder_path):
+            self.images.append(os.path.join(folder_path, file))
+
+    def __getitem__(self, index):
+        image_path = self.images[index % len(self.images)]
+
+        # Load image as RGB
+        img = np.asarray(Image.open(image_path).convert('RGB'))  # L
+
+        # Default image format
+        img = self.data_format(image=img)
+        img = img['image']
+
+        if self.transform:
+            # Perform augmentation
+            augmented_data = self.transform(image=img)
+            img = augmented_data['image']
+
+        # Convert image (PIL/Numpy) to PyTorch Tensor
+        img = transforms.ToTensor()(img)
+
+        return image_path, img
+
+    def __len__(self):
+        return len(self.images)
