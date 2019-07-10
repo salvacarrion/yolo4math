@@ -12,8 +12,8 @@ def main():
     WIDTH, HEIGHT = (1024, 1024)
     COLORS = np.array([[200, 0, 0, 255], [0, 0, 200, 255]])
 
-    load_path = 'datasets/equations/resized/{}x{}-padded'.format(WIDTH, HEIGHT)
-    json_dataset = load_dataset(load_path)
+    load_path = '../datasets/equations/resized/{}x{}-padded'.format(WIDTH, HEIGHT)
+    json_dataset = load_dataset(load_path + '/train.json')
     images = json_dataset['images']
     annotations = json_dataset['annotations']
     class_names = json_dataset['categories']
@@ -30,6 +30,7 @@ def main():
         filename = load_path + '/' + image_data['filename']
 
         print("Loading image  #{} ({}/{})...".format(image_id, i, len(images)))
+        #image = Image.open(filename)
         image = cv2.imread(filename)
 
         # print("\t- Performing bbox augmentation...")
@@ -45,8 +46,8 @@ def main():
         for annotation in bboxes:
             cat_id = str(annotation['category_id'])
             text = class_names[cat_id]
-            draw_bbox(image, annotation['bbox'], cat_id, COLORS, thickness=2)
-            draw_labels(image, annotation['bbox'], text, cat_id, COLORS, font_size=12)
+            draw_bbox(image, annotation['bbox'], thickness=2)
+            draw_labels(image, annotation['bbox'], text, cat_id, font_size=12)
 
         # Show image
         f, ax = plt.subplots(1, 1, figsize=(4, 4))

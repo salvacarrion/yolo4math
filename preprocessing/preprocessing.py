@@ -36,11 +36,11 @@ def main():
     start_time = time.time()
     WIDTH, HEIGHT = (1024, 1024)
 
-    load_path_raw = 'datasets/equations/raw'
-    load_path_resized = 'datasets/equations/resized/{}x{}'.format(WIDTH, HEIGHT)
+    load_path_raw = '../datasets/equations/raw'
+    load_path_resized = '../datasets/equations/resized/{}x{}'.format(WIDTH, HEIGHT)
 
     load_path = load_path_raw  # load_path_resized
-    save_path = 'datasets/equations/resized/{}x{}-val'.format(WIDTH, HEIGHT)
+    save_path = '../datasets/equations/resized/{}x{}-padded'.format(WIDTH, HEIGHT)
     JSON_DATASET = load_dataset(load_path + '/train.json')
 
     # Make dir if it doesn't exist
@@ -71,7 +71,7 @@ def main():
         image = cv2.imread(filename)
 
         print("\t- Resizing image...")
-        image, new_coords = letterbox_image(image, (WIDTH, HEIGHT), padding=False)
+        image, new_coords = letterbox_image(image, (WIDTH, HEIGHT), padding=True)
 
         # Stats
         h, w, _ = image.shape
@@ -112,8 +112,8 @@ def main():
         save_image(image, save_filename)
 
         # Finish loop
-        if i == 10:
-            break
+        # if i == 10:
+        #     break
 
     # # Fix json
     # categories = {int(k): v for k, v in JSON_DATASET['categories'].items()}
@@ -150,4 +150,4 @@ def main():
 
 if __name__ == "__main__":
     pass
-    #main()
+    main()

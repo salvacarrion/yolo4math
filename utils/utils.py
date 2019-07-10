@@ -58,14 +58,14 @@ def draw_labels(image, bbox, text, color=None, font_size=24):
     x, y, w, h = (int(x) for x in bbox)
 
     # Set font
-    font = ImageFont.truetype(font='font/FiraMono-Medium.otf', size=int(font_size))
-    font_w, font_h = font.getsize(text)
+    #font = ImageFont.truetype(font='font/FiraMono-Medium.otf', size=int(font_size))
+    font_w, font_h = 12, 12 #font.getsize(text)
     h_factor = 1.0
 
     # Draw text
     draw = ImageDraw.Draw(image)
-    draw.rectangle([(x, round(y-font_h*h_factor)), (x+font_w, round(y-font_h*h_factor+font_h))], fill=color)
-    draw.text((x, round(y-font_h*h_factor)), text=text, fill=(255, 255, 255, 255), font=font)
+    draw.rectangle([(x, round(y-font_h*h_factor)), (x+font_w, round(y-font_h*h_factor+font_h))], fill=(200, 0, 0, 255))
+    draw.text((x, round(y-font_h*h_factor)), text=text, fill=(255, 255, 255, 255))
 
 
 def save_image(image, filename, use_cv=False):
@@ -156,9 +156,16 @@ def resize_bboxes(bboxes, coords):
 
     return new_bboxes
 
+def xywh2xyxy(x):
+    y = x.new(x.shape)  # copy array shape
+    y[..., 0] = x[..., 0]
+    y[..., 1] = x[..., 1]
+    y[..., 2] = x[..., 0] + x[..., 2]
+    y[..., 3] = x[..., 1] + x[..., 3]
+    return y
 
-def coco2cxcywh(x):
-    # From ABS(x_min, y_min, width, height) => ABS(center_x, center_y, w, h)
+def xywh2cxcywh(x):
+    # From x_min, y_min, width, height => center_x, center_y, w, h
     y = x.new(x.shape)  # copy array shape
     y[..., 0] = (x[..., 0] + x[..., 2] / 2)  # center_x = x1 + width/2
     y[..., 1] = (x[..., 1] + x[..., 3] / 2)  # center_y = y1 + height/2
@@ -166,6 +173,39 @@ def coco2cxcywh(x):
     y[..., 3] = x[..., 3]  # Abs height
     return y
 
+def cxcywh2xyxy(x):
+    # From [ABS/REL](center_x, center_y, w, h) => (x1, y1, x2, y2)
+    y = x.new(x.shape)  # copy array shape
+    y[..., 0] = x[..., 0] - x[..., 2] / 2  # x1 = center_x - width/2
+    y[..., 1] = x[..., 1] - x[..., 3] / 2  # y1 = center_y - height/2
+    y[..., 2] = x[..., 0] + x[..., 2] / 2  # x2 = center_x + width/2
+    y[..., 3] = x[..., 1] + x[..., 3] / 2  # y2 = center_y + height/2
+    return y
+
+def cxcywh2xywh(x):
+    y = x.new(x.shape)  # copy array shape
+    y[..., 0] = (x[..., 0] - x[..., 2] / 2)  # center_x = x1 + width/2
+    y[..., 1] = (x[..., 1] - x[..., 3] / 2)  # center_y = y1 + height/2
+    y[..., 2] = x[..., 2]  # Abs width
+    y[..., 3] = x[..., 3]  # Abs height
+    return y
+
+def xyxy2cxcywh(x):
+    y = x.new(x.shape)  # copy array shape
+    y[..., 0] = (x[..., 0] + x[..., 2]) / 2  # center_x = (x1 + x2)/2
+    y[..., 1] = (x[..., 1] + x[..., 3]) / 2  # center_y = (y1 + y2)/2
+    y[..., 2] = x[..., 2] - x[..., 0]
+    y[..., 3] = x[..., 3] - x[..., 1]
+    return y
+
+def rel2abs(x, height, width):
+    # From ABS(x, y, w, h) => REL(x, y, w, h) [0.0-1.0]
+    y = x.new(x.shape)  # copy array shape
+    y[..., 0] = x[..., 0]*width
+    y[..., 1] = x[..., 1]*height
+    y[..., 2] = x[..., 2]*width
+    y[..., 3] = x[..., 3]*height
+    return y
 
 def abs2rel(x, height, width):
     # From ABS(x, y, w, h) => REL(x, y, w, h) [0.0-1.0]
@@ -285,7 +325,8 @@ def weights_init_normal(m):
 def rescale_boxes(boxes, current_shape, original_shape):
     """
     Rescales bounding boxes to the original shape
-    Expects boxes in VOC format xyxy
+    Expects boxes in ABS(xyxy)
+    Return boxes in ABS(xyxy)
     """
     orig_h, orig_w = original_shape
     this_h, this_w = current_shape
@@ -302,17 +343,6 @@ def rescale_boxes(boxes, current_shape, original_shape):
     boxes[:, 2] = ((boxes[:, 2] - pad_x // 2) / unpad_w) * orig_w
     boxes[:, 3] = ((boxes[:, 3] - pad_y // 2) / unpad_h) * orig_h
     return boxes
-
-
-
-def xywh2xyxy(x):
-    # From [ABS/REL](center_x, center_y, w, h) => (x1, y1, x2, y2)
-    y = x.new(x.shape)  # copy array shape
-    y[..., 0] = x[..., 0] - x[..., 2] / 2  # x1 = center_x - width/2
-    y[..., 1] = x[..., 1] - x[..., 3] / 2  # y1 = center_y - height/2
-    y[..., 2] = x[..., 0] + x[..., 2] / 2  # x2 = center_x + width/2
-    y[..., 3] = x[..., 1] + x[..., 3] / 2  # y2 = center_y + height/2
-    return y
 
 
 def non_max_suppression2(prediction, conf_thres=0.5, nms_thres=0.4):
@@ -627,75 +657,111 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
     return precision, recall, AP, f1, ap_class
 
 
-def process_detections(img_paths, img_detections, img_size, class_names, show_results=False, save_path=False, txt_y_offset=0.6):
+def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=False, txt_y_offset=0.6):
     # Bounding-box colors
     cmap = plt.get_cmap("tab20b")
     colors = [cmap(i) for i in np.linspace(0, 1, 20)]
 
+    # Default values
+    if not class_ids:
+        class_ids = [0]*len(bboxes)
+    if not class_probs:
+        class_probs = [0.0] * len(bboxes)
+    if not class_names:
+        class_names = ['Unknown'] * len(bboxes)
+
+    fig, ax = plt.subplots()
+    r = fig.canvas.get_renderer()
+    ax.imshow(img)
+    plt.tight_layout()
+
+    # Draw bounding boxes and labels of detections
+    for (x1, y1, x2, y2), class_id, class_prob in zip(bboxes, class_ids, class_probs):
+        #print("\t+ Label: %s, Conf: %.5f" % (class_names[int(class_id)], class_prob))
+
+        # Get color
+        color = colors[int(class_id) % len(colors)]
+
+        # Get box dimensions
+        box_w = x2 - x1
+        box_h = y2 - y1
+
+        # Create a Rectangle patch
+        bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2, edgecolor=color, facecolor="none")
+        # Add the bbox to the plot
+        ax.add_patch(bbox)
+        # Add label
+        txt = plt.text(
+            x1,
+            y1,
+            s=class_names[int(class_id)],
+            color="white",
+            verticalalignment="top",
+            bbox={"color": color, "pad": 0},
+        )
+        txt_bbox = txt.get_window_extent(renderer=r)
+        txt.set_position((x1, y1 - txt_bbox.height * txt_y_offset))
+
+    # Save generated image with detections
+    plt.axis("off")
+    plt.gca().xaxis.set_major_locator(NullLocator())
+    plt.gca().yaxis.set_major_locator(NullLocator())
+
+    # Save image
+    if save_path:
+        plt.savefig(save_path, bbox_inches="tight", pad_inches=0.0)
+
+    # Show image
+    if show_results:
+        plt.show()
+
+
+def process_detections(img_paths, img_detections, input_size, class_names, show_results=True, save_path=False, txt_y_offset=0.6):
+
     # Iterate through images and save plot of detections
-    for img_i, (path, detections) in enumerate(zip(img_paths, img_detections)):
+    for img_i, (img_path, detections) in enumerate(zip(img_paths, img_detections)):
+        #print("Image #{}: {}".format(img_i, img_path))
 
-        print("Image #{}: {}".format(img_i, path))
+        # Parse values
+        bboxes = detections[:, 0:4].numpy()
+        obj_confs = detections[:, 4].numpy()
+        class_probs = detections[:, 5].numpy()
+        class_ids = detections[:, 6].numpy()
 
-        # Create plot
-        img = np.array(Image.open(path))
-        fig, ax = plt.subplots()
-        r = fig.canvas.get_renderer()
-        ax.imshow(img)
+        # Load image
+        img = img2img(img_path)
 
-        # Draw bounding boxes and labels of detections
-        if detections is not None:
-            # Rescale boxes to original image
-            detections = rescale_boxes(detections, (img_size, img_size), img.shape[:2])
-            unique_labels = detections[:, -1].cpu().unique()
-            n_cls_preds = len(unique_labels)
-            bbox_colors = random.sample(colors, n_cls_preds)
-            for x1, y1, x2, y2, conf, cls_conf, cls_pred in detections:
-                print("\t+ Label: %s, Conf: %.5f" % (class_names[int(cls_pred)], cls_conf.item()))
+        # Rescale boxes
+        bboxes = rescale_boxes(bboxes, (input_size, input_size), img.shape[:2])
 
-                # Get box dimensions
-                box_w = x2 - x1
-                box_h = y2 - y1
-
-                color = bbox_colors[int(np.where(unique_labels == int(cls_pred))[0])]
-                # Create a Rectangle patch
-                bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2, edgecolor=color, facecolor="none")
-                # Add the bbox to the plot
-                ax.add_patch(bbox)
-                # Add label
-                txt = plt.text(
-                    x1,
-                    y1,
-                    s=class_names[int(cls_pred)],
-                    color="white",
-                    verticalalignment="top",
-                    bbox={"color": color, "pad": 0},
-                )
-                txt_bbox = txt.get_window_extent(renderer=r)
-                txt.set_position((x1, y1-txt_bbox.height*txt_y_offset))
+        # Plot bbox
+        plot_bboxes(img, bboxes, class_ids, class_probs, class_names, show_results=show_results, save_path=save_path, txt_y_offset=txt_y_offset)
 
 
-        # Save generated image with detections
-        plt.axis("off")
-        plt.gca().xaxis.set_major_locator(NullLocator())
-        plt.gca().yaxis.set_major_locator(NullLocator())
+def in_target2out_target(x, input_size=None):
+    """
+    input: REL(cxcywh) => output: ABS(xyxy)
+    """
+    t = torch.zeros((len(x), 7))  # xywh + obj_conf(1) + class_prob + class_id (this is from dataloader)
 
-        # Save image
-        if save_path:
-            filename = path.split("/")[-1].split(".")[0]
-            plt.savefig("{}/{}.eps".format(save_path, filename), bbox_inches="tight", pad_inches=0.0)
+    xyxy = cxcywh2xyxy(x[:, 2:])
+    abs_xyxy = rel2abs(xyxy, input_size, input_size)
 
-        # Show image
-        if show_results:
-            plt.show()
-
-
-def fake_target(x, img_size=None):
-    t = torch.zeros((len(x), 7))  # xywh + ocj_conf(1) + class_prob + class_id (this is from dataloader)
-    scale = img_size if img_size else 1.0
-    t[:, 0:4] = x[:, 2:] * scale  # From relative to abs
-    t[:, 4] = 1.0
-    t[:, 5] = 1.0
-    t[:, 6] = x[:, 1]
-    set_voc_format(t)
+    # REL bboxes to ABS(xyxy)
+    t[:, 0:4] = abs_xyxy
+    t[:, 4] = 1.0  # Obj_conf
+    t[:, 5] = 1.0  # Class_pob
+    t[:, 6] = x[:, 1]  # Class_id
+    print('------------------------')
     return t
+
+
+def img2img(img):
+    # Cast image
+    if isinstance(img, str):
+        img = np.array(Image.open(img))
+    elif isinstance(img, torch.Tensor):
+        img = np.transpose(img.numpy()*255.0, (1, 2, 0)).astype(dtype=np.uint8)
+    elif isinstance(img, np.ndarray):
+        img = img.astype(dtype=np.uint8)
+    return img
