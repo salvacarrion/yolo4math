@@ -238,7 +238,7 @@ def set_voc_format(prediction):
     # prediction = (image_i, hypothesis_i, (x,y,w,h,obj_conf, classes)
     # => take all all dimentions 'till last one, and then, take from the 0th to 4th (x,y,w,h)
     xywh = prediction[..., :4]
-    prediction[..., :4] = xywh2xyxy(xywh)
+    prediction[..., :4] = cxcywh2xyxy(xywh)
 
 
 def keep_max_class(image_predictions):
@@ -269,6 +269,9 @@ def keep_max_class(image_predictions):
 
 
 def non_max_suppression(image_predictions, nms_thres=0.5):
+    """
+    Requires predictions in xyxy format
+    """
     output = []
 
     for i, hypothesis in enumerate(image_predictions):
@@ -634,14 +637,13 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
         # Extract labels
         labels += targets[:, 1].tolist()
         # Rescale target
-        targets[:, 2:] = xywh2xyxy(targets[:, 2:])  # From REL [xywh] to REL [xyxy]
-        targets[:, 2:] *= img_size  # From REL to ABS
+        targets[:, 2:] = rel2abs(cxcywh2xyxy(targets[:, 2:]), img_size, img_size)  # From REL [cxcywh] to ABS[xyxy]
 
         imgs = Variable(imgs.type(Tensor), requires_grad=False)
 
         with torch.no_grad():
             detections = model(imgs)
-            set_voc_format(detections)
+            detections[..., :4] = cxcywh2xyxy(detections[..., :4])
             detections = remove_low_conf(detections, conf_thres=conf_thres)
             detections = keep_max_class(detections)
             detections = non_max_suppression(detections, nms_thres=nms_thres)
@@ -657,23 +659,27 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
     return precision, recall, AP, f1, ap_class
 
 
-def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=False, txt_y_offset=0.6):
+def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=False, txt_y_offset=0.6, title=None, colors=None):
     # Bounding-box colors
-    cmap = plt.get_cmap("tab20b")
-    colors = [cmap(i) for i in np.linspace(0, 1, 20)]
+    if colors is None:
+        cmap = plt.get_cmap("tab20b")
+        colors = [cmap(i) for i in np.linspace(0, 1, 20)]
 
     # Default values
-    if not class_ids:
+    if class_ids is None:
         class_ids = [0]*len(bboxes)
-    if not class_probs:
+    if class_probs is None:
         class_probs = [0.0] * len(bboxes)
-    if not class_names:
+    if class_names is None:
         class_names = ['Unknown'] * len(bboxes)
 
+    # Config plot
     fig, ax = plt.subplots()
+    if title:
+        fig.canvas.set_window_title(title)
     r = fig.canvas.get_renderer()
-    ax.imshow(img)
     plt.tight_layout()
+    ax.imshow(img)
 
     # Draw bounding boxes and labels of detections
     for (x1, y1, x2, y2), class_id, class_prob in zip(bboxes, class_ids, class_probs):
@@ -694,7 +700,7 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
         txt = plt.text(
             x1,
             y1,
-            s=class_names[int(class_id)],
+            s=class_names[int(class_id)].title(),
             color="white",
             verticalalignment="top",
             bbox={"color": color, "pad": 0},
@@ -716,12 +722,9 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
         plt.show()
 
 
-def process_detections(img_paths, img_detections, input_size, class_names, show_results=True, save_path=False, txt_y_offset=0.6):
+def process_detections(img, img_detections, input_size, class_names, show_results=True, save_path=False, txt_y_offset=0.6, title=None, rescale_bboxes=False, colors=None):
 
-    # Iterate through images and save plot of detections
-    for img_i, (img_path, detections) in enumerate(zip(img_paths, img_detections)):
-        #print("Image #{}: {}".format(img_i, img_path))
-
+    for img_i, detections in zip(img, img_detections):
         # Parse values
         bboxes = detections[:, 0:4].numpy()
         obj_confs = detections[:, 4].numpy()
@@ -729,31 +732,42 @@ def process_detections(img_paths, img_detections, input_size, class_names, show_
         class_ids = detections[:, 6].numpy()
 
         # Load image
-        img = img2img(img_path)
+        np_img = img2img(img_i)
 
         # Rescale boxes
-        bboxes = rescale_boxes(bboxes, (input_size, input_size), img.shape[:2])
+        if rescale_bboxes:
+            bboxes = rescale_boxes(bboxes, (input_size, input_size), np_img.shape[:2])
 
         # Plot bbox
-        plot_bboxes(img, bboxes, class_ids, class_probs, class_names, show_results=show_results, save_path=save_path, txt_y_offset=txt_y_offset)
+        plot_bboxes(np_img, bboxes, class_ids, class_probs, class_names, show_results=show_results, save_path=save_path, txt_y_offset=txt_y_offset, title=title, colors=colors)
 
 
-def in_target2out_target(x, input_size=None):
-    """
-    input: REL(cxcywh) => output: ABS(xyxy)
-    """
-    t = torch.zeros((len(x), 7))  # xywh + obj_conf(1) + class_prob + class_id (this is from dataloader)
+def in_target2out_target(in_target, out_h, out_w):
+    # in_target => image_i + class_id + REL(cxcywh)
+    # out_target => ABS(cxcywh) + obj_conf + class_prob + class_id
+    out_target = torch.zeros((len(in_target), 7))
 
-    xyxy = cxcywh2xyxy(x[:, 2:])
-    abs_xyxy = rel2abs(xyxy, input_size, input_size)
+    # Convert bbxoes from REL(cxcywh) => ABS(xyxy)
+    bboxes_cxcywh_rel = in_target[..., 2:]
+    boxes_cxcywh_abs = rel2abs(bboxes_cxcywh_rel, out_h, out_w)
+    boxes_xyxy_abs = cxcywh2xyxy(boxes_cxcywh_abs)
 
-    # REL bboxes to ABS(xyxy)
-    t[:, 0:4] = abs_xyxy
-    t[:, 4] = 1.0  # Obj_conf
-    t[:, 5] = 1.0  # Class_pob
-    t[:, 6] = x[:, 1]  # Class_id
-    print('------------------------')
-    return t
+    # For debugging
+    print("cxcywh_rel: {}".format(bboxes_cxcywh_rel[0]))
+    print("cxcywh_abs: {}".format(boxes_cxcywh_abs[0]))
+    print("xyxy abs: {}".format(boxes_xyxy_abs[0]))
+
+    # Write out target
+    out_target[:, 0:4] = boxes_xyxy_abs
+    out_target[:, 4] = 1.0  # Obj_conf
+    out_target[:, 5] = 1.0  # Class_pob
+    out_target[:, 6] = in_target[:, 1]  # Class_id
+
+    # Return only first image in batch
+    first_image_idxs = in_target[:, 0] == 0
+    out_target = out_target[first_image_idxs]
+
+    return out_target
 
 
 def img2img(img):
@@ -761,7 +775,53 @@ def img2img(img):
     if isinstance(img, str):
         img = np.array(Image.open(img))
     elif isinstance(img, torch.Tensor):
-        img = np.transpose(img.numpy()*255.0, (1, 2, 0)).astype(dtype=np.uint8)
+        img = np.transpose(img.cpu().numpy()*255.0, (1, 2, 0)).astype(dtype=np.uint8)
     elif isinstance(img, np.ndarray):
         img = img.astype(dtype=np.uint8)
     return img
+
+
+def fix_bboxes(bboxes_xyxy, h, w, area_thres=5*5):
+    """
+    ABS(xyxy)
+    Area in pixels
+    """
+    # x1 ------------------------------
+    x1_outL_idxs = bboxes_xyxy[:, 0] < 0
+    bboxes_xyxy[x1_outL_idxs, 0] = 0
+
+    x1_outR_idxs = bboxes_xyxy[:, 0] >= w
+    bboxes_xyxy[x1_outR_idxs, 0] = w
+
+    # y1 ------------------------------
+    y1_outT_idxs = bboxes_xyxy[:, 1] < 0
+    bboxes_xyxy[y1_outT_idxs, 1] = 0
+
+    y1_outB_idxs = bboxes_xyxy[:, 1] >= h
+    bboxes_xyxy[y1_outB_idxs, 1] = h
+
+    # x2 ------------------------------
+    x2_outL_idxs = bboxes_xyxy[:, 2] < 0
+    bboxes_xyxy[x2_outL_idxs, 2] = 0
+
+    x2_outR_idxs = bboxes_xyxy[:, 2] >= w
+    bboxes_xyxy[x2_outR_idxs, 2] = w
+
+    # y2 ------------------------------
+    y2_outT_idxs = bboxes_xyxy[:, 3] < 0
+    bboxes_xyxy[y2_outT_idxs, 3] = 0
+
+    y2_outB_idxs = bboxes_xyxy[:, 3] >= h
+    bboxes_xyxy[y2_outB_idxs, 3] = h
+
+    # Compute area
+    bbox_w = bboxes_xyxy[:, 2] - bboxes_xyxy[:, 0]
+    bbox_y = bboxes_xyxy[:, 3] - bboxes_xyxy[:, 1]
+    area = bbox_w * bbox_y
+
+    # Return those with the area greater than the threshold
+    bboxes_area_idxs = area >= area_thres  # in pixels
+    bboxes_xyxy = bboxes_xyxy[bboxes_area_idxs]
+
+    return bboxes_xyxy
+

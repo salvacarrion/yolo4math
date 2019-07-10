@@ -20,15 +20,24 @@ from torch.autograd import Variable
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+
+    # Equations
     parser.add_argument("--image_folder", type=str, default="datasets/equations/resized/1024x1024-test", help="path to dataset")
     parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-tiny/yolov4math-tiny.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default="checkpoints/yolov3_ckpt_1.pth", help="path to weights file")
+    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3-tiny/yolov3-tiny.weights", help="path to weights file")
     parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
+
+    # COCO
+    # parser.add_argument("--image_folder", type=str, default="datasets/coco/train2014/images", help="path to dataset")
+    # parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-608/model.cfg", help="path to model definition file")
+    # parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3-608/yolov3.weights", help="path to weights file")
+    # parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
+
     parser.add_argument("--conf_thres", type=float, default=0.6, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
-    parser.add_argument("--batch_size", type=int, default=2, help="size of the batches")
-    parser.add_argument("--n_cpu", type=int, default=0, help="number of cpu threads to use during batch generation")
-    parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")
+    parser.add_argument("--batch_size", type=int, default=4, help="size of the batches")
+    parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
+    parser.add_argument("--img_size", type=int, default=1024, help="size of each image dimension")
     parser.add_argument("--checkpoint_model", type=str, help="path to checkpoint model")
     opt = parser.parse_args()
     print(opt)
@@ -73,7 +82,7 @@ if __name__ == "__main__":
         # Get detections
         with torch.no_grad():
             detections = model(input_imgs)
-            set_voc_format(detections)
+            detections[..., :4] = cxcywh2xyxy(detections[..., :4])
             detections = remove_low_conf(detections, conf_thres=opt.conf_thres)
             detections = keep_max_class(detections)
             detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
@@ -88,8 +97,10 @@ if __name__ == "__main__":
         img_paths.extend(paths)
         img_detections.extend(detections)
 
-        if batch_i == 2:
+        if batch_i == 10:
             break
 
     # Show detections
-    process_detections(img_paths, img_detections, opt.img_size, class_names, show_results=True, save_path=None)
+    process_detections(img_paths, img_detections, opt.img_size, class_names, rescale_bboxes=True, title="Detection result", colors=None)
+    dasf = 3
+
