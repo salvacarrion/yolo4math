@@ -112,7 +112,7 @@ if __name__ == "__main__":
     validation_loader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size, sampler=valid_sampler, num_workers=opt.n_cpu, pin_memory=True, collate_fn=dataset.collate_fn)
 
     # Optimizer
-    optimizer = torch.optim.Adam(model.parameters())
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
 
     metrics = [
         "grid_size",
@@ -195,7 +195,7 @@ if __name__ == "__main__":
                     if name != "grid_size":
                         tensorboard_log += [("{}_{}".format(name, j+1), metric)]
             tensorboard_log += [("loss", loss.item())]
-            logger.list_of_scalars_summary(tensorboard_log, batches_done)
+            logger.list_of_scalars_summary(tensorboard_log, epoch)
 
         log_str += AsciiTable(metric_table).table
         log_str += "\nTotal loss ".format(loss.item())

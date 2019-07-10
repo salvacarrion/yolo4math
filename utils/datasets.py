@@ -150,7 +150,7 @@ class EQDataset(Dataset):
 
 
 class ImageFolder(Dataset):
-    def __init__(self, folder_path, transform=None, class_names=None, img_size=416):
+    def __init__(self, folder_path, transform=None, class_names=None, img_size=None):
         self.images = []
         self.img_size = img_size
         self.class_names = class_names

@@ -22,9 +22,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # Equations
-    parser.add_argument("--image_folder", type=str, default="datasets/equations/resized/1024x1024-test", help="path to dataset")
+    parser.add_argument("--image_folder", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
     parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-tiny/yolov4math-tiny.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3-tiny/yolov3-tiny.weights", help="path to weights file")
+    parser.add_argument("--weights_path", type=str, default="checkpoints/yolov3_ckpt_30.pth", help="path to weights file")
     parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
 
     # COCO
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     # parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3-608/yolov3.weights", help="path to weights file")
     # parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
 
-    parser.add_argument("--conf_thres", type=float, default=0.6, help="object confidence threshold")
+    parser.add_argument("--conf_thres", type=float, default=0.51, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--batch_size", type=int, default=4, help="size of the batches")
     parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
@@ -43,6 +43,7 @@ if __name__ == "__main__":
     print(opt)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #device = torch.device("cpu")
 
     os.makedirs("output", exist_ok=True)
 
@@ -63,7 +64,7 @@ if __name__ == "__main__":
     model.eval()
 
     # Get dataloader
-    dataset = ImageFolder(opt.image_folder)
+    dataset = ImageFolder(opt.image_folder, img_size=opt.img_size)
 
     # Build data loader
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size, num_workers=opt.n_cpu)
@@ -97,10 +98,13 @@ if __name__ == "__main__":
         img_paths.extend(paths)
         img_detections.extend(detections)
 
-        if batch_i == 10:
+        if batch_i == 0:
             break
 
-    # Show detections
-    process_detections(img_paths, img_detections, opt.img_size, class_names, rescale_bboxes=True, title="Detection result", colors=None)
-    dasf = 3
+    if img_detections:
+        # Show detections
+        process_detections(img_paths, img_detections, opt.img_size, class_names, rescale_bboxes=True, title="Detection result", colors=None)
+    else:
+        print("NO DETECTIONS")
 
+    asdsd = 3
