@@ -135,12 +135,13 @@ if __name__ == "__main__":
     for epoch in range(opt.epochs):
         model.train()
         start_time = time.time()
-        print("Epoch {}/{}]".format(epoch, opt.epochs))
+        print("Epoch {}/{} ----------------->".format(epoch, opt.epochs))
 
         # Train model
         for batch_i, (img_paths, imgs, targets) in enumerate(train_loader):
+
             batches_done = len(train_loader) * epoch + batch_i
-            print("\t- Batch {}/{}]".format(epoch, opt.epochs, batch_i, len(train_loader)))
+            print("\t- Batch {}/{}".format(batch_i, len(train_loader)))
 
             # Input target => image_i + class_id + REL(cxcywh)
             # Output target => ABS(cxcywh) + obj_conf + class_prob + class_id
@@ -173,7 +174,6 @@ if __name__ == "__main__":
                 optimizer.zero_grad()
 
             model.seen += imgs.size(0)
-
 
         # ----------------
         #   Log progress

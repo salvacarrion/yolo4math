@@ -88,7 +88,9 @@ class EQDataset(Dataset):
         # Fix bboxes (keep into the region boundaries)
         h, w, _ = img.shape
         bboxes_xyxy = torch.tensor(bboxes_xyxy)
-        bboxes_xyxy = fix_bboxes(bboxes_xyxy, h, w)
+        bboxes_xyxy, kept_indices = fix_bboxes(bboxes_xyxy, h, w)
+        classes_id = classes_id[kept_indices]  # Math dimensions
+
         # Sanity check III
         #plot_bboxes(img, bboxes_xyxy, title="Augmented Fix")
 
@@ -108,7 +110,6 @@ class EQDataset(Dataset):
         targets = torch.zeros((len(boxes_cxcywh), 6))  # 0(batch), class_id + xywh (REL)
         targets[:, 1] = classes_id
         targets[:, 2:] = boxes_cxcywh
-
 
         return image_path, img, targets
 
@@ -267,7 +268,8 @@ class COCODataset(Dataset):
         # Fix bboxes (keep into the region boundaries)
         h, w, _ = img.shape
         bboxes_xyxy = torch.tensor(bboxes_xyxy)
-        bboxes_xyxy = fix_bboxes(bboxes_xyxy, h, w)
+        bboxes_xyxy, kept_indices = fix_bboxes(bboxes_xyxy, h, w)
+        classes_id = classes_id[kept_indices]  # Math dimensions
         # Sanity check III
         # plot_bboxes(img, bboxes_xyxy, title="Augmented Fix")
 

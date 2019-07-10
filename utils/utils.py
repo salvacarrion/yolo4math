@@ -823,5 +823,6 @@ def fix_bboxes(bboxes_xyxy, h, w, area_thres=5*5):
     bboxes_area_idxs = area >= area_thres  # in pixels
     bboxes_xyxy = bboxes_xyxy[bboxes_area_idxs]
 
-    return bboxes_xyxy
+    return bboxes_xyxy, bboxes_area_idxs
+
 
