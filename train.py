@@ -28,11 +28,11 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
     parser.add_argument("--gradient_accumulations", type=int, default=1, help="number of gradientaccums before step")
 
-    # # Equations
-    # parser.add_argument("--dataset_path", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
-    # parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov4math-tiny.cfg", help="path to model definition file")
-    # parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.weights", help="path to weights file")
-    # parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
+    # Equations
+    parser.add_argument("--dataset_path", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
+    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-tiny4math.cfg", help="path to model definition file")
+    parser.add_argument("--weights_path", type=str, default=None, help="path to weights file")
+    parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
 
     # COCO
     # parser.add_argument("--dataset_path", type=str, default="datasets/coco/train2014/images/", help="path to dataset")
@@ -46,10 +46,10 @@ if __name__ == "__main__":
     # Labels: /home/salvacarrion/Documents/datasets/coco2014/coco/labels/val2014
     # Images: /home/salvacarrion/Documents/datasets/coco2014/coco/images/val2014
     #         /home/salvacarrion/Documents/datasets/coco2014/coco/labels/val2014/COCO_val2014_000000079362.txt n
-    parser.add_argument("--dataset_path", type=str, default="/home/salvacarrion/Documents/datasets/coco2014/coco/images/val2014", help="path to dataset")
-    parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
-    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default=None, help="path to weights file")
+    #parser.add_argument("--dataset_path", type=str, default="/home/salvacarrion/Documents/datasets/coco2014/coco/images/val2014", help="path to dataset")
+    #parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
+    #parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.cfg", help="path to model definition file")
+    #parser.add_argument("--weights_path", type=str, default=None, help="path to weights file")
 
     parser.add_argument("--conf_thres", type=float, default=0.8, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
     parser.add_argument("--multiscale_training", default=False, help="allow for multi-scale training")
     parser.add_argument("--shuffle_dataset", default=True, help="shuffle dataset")
-    parser.add_argument("--validation_split", default=0.1, help="validation split")
+    parser.add_argument("--validation_split", default=0.0, help="validation split")
     parser.add_argument("--random_seed", default=42, help="random seed")
     opt = parser.parse_args()
     print(opt)
@@ -100,8 +100,8 @@ if __name__ == "__main__":
     ], p=1.0)
 
     # Get dataloader
-    #dataset = EQDataset(opt.dataset_path, img_size=opt.img_size, transform=data_aug, multiscale=opt.multiscale_training)
-    dataset = COCODataset(opt.dataset_path, img_size=opt.img_size, transform=data_aug, multiscale=opt.multiscale_training)
+    dataset = EQDataset(opt.dataset_path, img_size=opt.img_size, transform=data_aug, multiscale=opt.multiscale_training)
+    #dataset = COCODataset(opt.dataset_path, img_size=opt.img_size, transform=data_aug, multiscale=opt.multiscale_training)
 
     # Creating data indices for training and validation splits:
     dataset_size = len(dataset)
@@ -157,8 +157,8 @@ if __name__ == "__main__":
             # Output target => ABS(cxcywh) + obj_conf + class_prob + class_id
 
             # Sanity check I (img_path => only default transformations can be reverted)
-            # fake_targets = in_target2out_target(targets, out_h=opt.img_size, out_w=opt.img_size)
-            # process_detections([imgs[0]], [fake_targets], opt.img_size, class_names, rescale_bboxes=False, title="Augmented final", colors=None)
+            fake_targets = in_target2out_target(targets, out_h=opt.img_size, out_w=opt.img_size)
+            process_detections([imgs[0]], [fake_targets], opt.img_size, class_names, rescale_bboxes=False, title="Augmented final", colors=None)
 
             # Inputs/Targets to device
             imgs = Variable(imgs.to(device))
@@ -169,14 +169,14 @@ if __name__ == "__main__":
             loss.backward()
 
             # Sanity check II
-            # outputs[..., :4] = cxcywh2xyxy(outputs[..., :4])
-            # detections = remove_low_conf(outputs, conf_thres=opt.conf_thres)
-            # detections = keep_max_class(detections)
-            # detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
-            # if detections:
-            #     process_detections([imgs[0]], [detections[0]], opt.img_size, class_names, rescale_bboxes=False, title="Detection result", colors=None)
-            # else:
-            #     print("NO DETECTIONS")
+            outputs[..., :4] = cxcywh2xyxy(outputs[..., :4])
+            detections = remove_low_conf(outputs, conf_thres=opt.conf_thres)
+            detections = keep_max_class(detections)
+            detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
+            if detections:
+                process_detections([imgs[0]], [detections[0]], opt.img_size, class_names, rescale_bboxes=False, title="Detection result", colors=None)
+            else:
+                print("NO DETECTIONS")
 
             if batches_done % opt.gradient_accumulations:
                 # Accumulates gradient before each step

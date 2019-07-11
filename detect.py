@@ -22,18 +22,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # Equations
-    # parser.add_argument("--image_folder", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
-    # parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov4math-tiny.cfg", help="path to model definition file")
-    # parser.add_argument("--weights_path", type=str, default="checkpoints/yolov3_ckpt_30.pth", help="path to weights file")
-    # parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
-
-    # COCO
-    parser.add_argument("--image_folder", type=str, default="datasets/coco/train2014/images", help="path to dataset")
+    parser.add_argument("--image_folder", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
     parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-tiny4math.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.weights", help="path to weights file")
-    parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
+    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3_best.pth", help="path to weights file")
+    parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
 
-    parser.add_argument("--conf_thres", type=float, default=0.501, help="object confidence threshold")
+    # # COCO
+    # parser.add_argument("--image_folder", type=str, default="datasets/coco/train2014/images", help="path to dataset")
+    # parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-tiny4math.cfg", help="path to model definition file")
+    # parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.weights", help="path to weights file")
+    # parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
+
+    parser.add_argument("--conf_thres", type=float, default=0.511, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")

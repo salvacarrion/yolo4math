@@ -8,6 +8,7 @@ logs/
 checkpoints
 output/
 models/pretrained/**/*.weights
+models/pretrained/**/*.pt[h]
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
