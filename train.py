@@ -30,8 +30,8 @@ if __name__ == "__main__":
 
     # Equations
     parser.add_argument("--dataset_path", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
-    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-tiny/yolov4math-tiny.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3-tiny/yolov3-tiny.weights", help="path to weights file")
+    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov4math-tiny.cfg", help="path to model definition file")
+    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.weights", help="path to weights file")
     parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
 
     # COCO
@@ -39,8 +39,8 @@ if __name__ == "__main__":
     # parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
     # parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-608/model.cfg", help="path to model definition file")
     # parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3-608/yolov3.weights", help="path to weights file")
-    #parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-tiny/yolov3-tiny.cfg", help="path to model definition file")
-    #parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3-tiny/yolov3-tiny.weights", help="path to weights file")
+    #parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.cfg", help="path to model definition file")
+    #parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.weights", help="path to weights file")
 
     parser.add_argument("--conf_thres", type=float, default=0.8, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     print("CONF THRES.: {}".format(opt.conf_thres))
     print("NMS THRES.: {}".format(opt.nms_thres))
     print("BATCH SIZE.: {}".format(opt.batch_size))
-    model = Darknet(config_path=opt.model_def, img_size=opt.img_size).to(device)
+    model = Darknet(config_path=opt.model_def, img_size=opt.img_size, num_classes=len(class_names), in_channels=3).to(device)
     model.apply(weights_init_normal)
 
     # Load weights

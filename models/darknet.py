@@ -13,12 +13,15 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 
-def create_modules(module_defs):
+def create_modules(module_defs, input_shape, num_classes):
     """
     Constructs module list of layer blocks from module configuration in module_defs
     """
+    in_h, in_w, in_channels = input_shape
+    assert in_h == in_w
+    img_size = in_h
     hyperparams = module_defs.pop(0)
-    output_filters = [int(hyperparams["channels"])]
+    output_filters = [in_channels]
     module_list = nn.ModuleList()
     for module_i, module_def in enumerate(module_defs):
         modules = nn.Sequential()
@@ -71,8 +74,6 @@ def create_modules(module_defs):
             anchors = [int(x) for x in module_def["anchors"].split(",")]
             anchors = [(anchors[i], anchors[i + 1]) for i in range(0, len(anchors), 2)]
             anchors = [anchors[i] for i in anchor_idxs]
-            num_classes = int(module_def["classes"])
-            img_size = int(hyperparams["height"])
             # Define detection layer
             yolo_layer = YOLOLayer(anchors, num_classes, img_size)
             modules.add_module("yolo_".format(module_i), yolo_layer)
@@ -244,10 +245,10 @@ class YOLOLayer(nn.Module):
 class Darknet(nn.Module):
     """YOLOv3 object detection model"""
 
-    def __init__(self, config_path, img_size):
+    def __init__(self, config_path, img_size, num_classes, in_channels=3):
         super(Darknet, self).__init__()
         self.module_defs = parse_model_config(config_path)
-        self.hyperparams, self.module_list = create_modules(self.module_defs)
+        self.hyperparams, self.module_list = create_modules(self.module_defs, (img_size, img_size, in_channels), num_classes)
         self.yolo_layers = [layer[0] for layer in self.module_list if hasattr(layer[0], "metrics")]
         self.img_size = img_size
         self.seen = 0

@@ -22,21 +22,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # Equations
-    parser.add_argument("--image_folder", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
-    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-tiny/yolov4math-tiny.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default="checkpoints/yolov3_ckpt_30.pth", help="path to weights file")
-    parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
+    # parser.add_argument("--image_folder", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
+    # parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov4math-tiny.cfg", help="path to model definition file")
+    # parser.add_argument("--weights_path", type=str, default="checkpoints/yolov3_ckpt_30.pth", help="path to weights file")
+    # parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
 
     # COCO
-    # parser.add_argument("--image_folder", type=str, default="datasets/coco/train2014/images", help="path to dataset")
-    # parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3-608/model.cfg", help="path to model definition file")
-    # parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3-608/yolov3.weights", help="path to weights file")
-    # parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
+    parser.add_argument("--image_folder", type=str, default="datasets/equations/resized/1024x1024-test", help="path to dataset")
+    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-608.cfg", help="path to model definition file")
+    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-608.weights", help="path to weights file")
+    parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
 
-    parser.add_argument("--conf_thres", type=float, default=0.51, help="object confidence threshold")
-    parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
-    parser.add_argument("--batch_size", type=int, default=4, help="size of the batches")
-    parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
+    parser.add_argument("--conf_thres", type=float, default=0.5, help="object confidence threshold")
+    parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
+    parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
+    parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--img_size", type=int, default=1024, help="size of each image dimension")
     parser.add_argument("--checkpoint_model", type=str, help="path to checkpoint model")
     opt = parser.parse_args()
@@ -51,14 +51,15 @@ if __name__ == "__main__":
     class_names = load_classes(opt.class_path)
 
     # Initiate model
-    model = Darknet(config_path=opt.model_def, img_size=opt.img_size).to(device)
-
-    # Load weights
-    if opt.weights_path:
-        if opt.weights_path.endswith(".pth"):
-            model.load_state_dict(torch.load(opt.weights_path))
-        else:
-            model.load_darknet_weights(opt.weights_path)
+    model = Darknet(config_path=opt.model_def, img_size=opt.img_size, num_classes=len(class_names), in_channels=3).to(device)
+    #model.apply(weights_init_normal)
+    #
+    # # Load weights
+    # if opt.weights_path:
+    #     if opt.weights_path.endswith(".pth"):
+    #         model.load_state_dict(torch.load(opt.weights_path))
+    #     else:
+    #         model.load_darknet_weights(opt.weights_path)
 
     # Set in evaluation mode
     model.eval()
@@ -76,13 +77,13 @@ if __name__ == "__main__":
 
     print("\nPerforming object detection:")
     prev_time = time.time()
-    for batch_i, (paths, input_imgs) in enumerate(dataloader):
+    for batch_i, (paths, imgs) in enumerate(dataloader):
         # Configure input
-        input_imgs = Variable(input_imgs.type(Tensor))
+        imgs = Variable(imgs.type(Tensor))
 
         # Get detections
         with torch.no_grad():
-            detections = model(input_imgs)
+            detections = model(imgs)
             detections[..., :4] = cxcywh2xyxy(detections[..., :4])
             detections = remove_low_conf(detections, conf_thres=opt.conf_thres)
             detections = keep_max_class(detections)
@@ -94,17 +95,20 @@ if __name__ == "__main__":
         prev_time = current_time
         print("\t+ Batch %d, Inference Time: %s" % (batch_i, inference_time))
 
+        # Show detections
+        process_detections(imgs, detections, opt.img_size, class_names, rescale_bboxes=True, title="Detection result", colors=None)
+
         # Save image and detections
         img_paths.extend(paths)
         img_detections.extend(detections)
 
-        if batch_i == 0:
+        if batch_i == 5:
             break
 
-    if img_detections:
-        # Show detections
-        process_detections(img_paths, img_detections, opt.img_size, class_names, rescale_bboxes=True, title="Detection result", colors=None)
-    else:
-        print("NO DETECTIONS")
+    # if img_detections:
+    #     # Show detections
+    #     process_detections(img_paths, img_detections, opt.img_size, class_names, rescale_bboxes=True, title="Detection result", colors=None)
+    # else:
+    #     print("NO DETECTIONS")
 
     asdsd = 3

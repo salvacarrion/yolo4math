@@ -659,7 +659,7 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
     return precision, recall, AP, f1, ap_class
 
 
-def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=False, txt_y_offset=0.6, title=None, colors=None):
+def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=False, txt_y_offset=0.0, title=None, colors=None):
     # Bounding-box colors
     if colors is None:
         cmap = plt.get_cmap("tab20b")
