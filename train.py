@@ -24,15 +24,15 @@ from torch.utils.data.sampler import SubsetRandomSampler
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=500, help="number of epochs")
-    parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
+    parser.add_argument("--epochs", type=int, default=50, help="number of epochs")
+    parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
     parser.add_argument("--gradient_accumulations", type=int, default=1, help="number of gradientaccums before step")
 
-    # Equations
-    parser.add_argument("--dataset_path", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
-    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov4math-tiny.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.weights", help="path to weights file")
-    parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
+    # # Equations
+    # parser.add_argument("--dataset_path", type=str, default="datasets/equations/resized/1024x1024", help="path to dataset")
+    # parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov4math-tiny.cfg", help="path to model definition file")
+    # parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.weights", help="path to weights file")
+    # parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
 
     # COCO
     # parser.add_argument("--dataset_path", type=str, default="datasets/coco/train2014/images/", help="path to dataset")
@@ -42,10 +42,19 @@ if __name__ == "__main__":
     #parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.cfg", help="path to model definition file")
     #parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.weights", help="path to weights file")
 
+    # COCO BIG
+    # Labels: /home/salvacarrion/Documents/datasets/coco2014/coco/labels/val2014
+    # Images: /home/salvacarrion/Documents/datasets/coco2014/coco/images/val2014
+    #         /home/salvacarrion/Documents/datasets/coco2014/coco/labels/val2014/COCO_val2014_000000079362.txt n
+    parser.add_argument("--dataset_path", type=str, default="/home/salvacarrion/Documents/datasets/coco2014/coco/images/val2014", help="path to dataset")
+    parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
+    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.cfg", help="path to model definition file")
+    parser.add_argument("--weights_path", type=str, default=None, help="path to weights file")
+
     parser.add_argument("--conf_thres", type=float, default=0.8, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--n_cpu", type=int, default=4, help="number of cpu threads to use during batch generation")
-    parser.add_argument("--img_size", type=int, default=1024, help="size of each image dimension")
+    parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")  # Anchors (abs-wh) are dependent of the input size
     parser.add_argument("--checkpoint_interval", type=int, default=10, help="interval between saving model weights")
     parser.add_argument("--evaluation_interval", type=int, default=5, help="interval evaluations on validation set")
     parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
@@ -81,7 +90,7 @@ if __name__ == "__main__":
         if opt.weights_path.endswith(".pth"):
             model.load_state_dict(torch.load(opt.weights_path))
         else:
-            model.load_darknet_weights(opt.weights_path, cutoff=None, free_layers=10)
+            model.load_darknet_weights(opt.weights_path, cutoff=None, free_layers=None)
 
     # Data augmentation
     data_aug = A.Compose([
@@ -91,8 +100,8 @@ if __name__ == "__main__":
     ], p=1.0)
 
     # Get dataloader
-    dataset = EQDataset(opt.dataset_path, img_size=opt.img_size, transform=data_aug, multiscale=opt.multiscale_training)
-    #dataset = COCODataset(opt.dataset_path, img_size=opt.img_size, transform=data_aug, multiscale=opt.multiscale_training)
+    #dataset = EQDataset(opt.dataset_path, img_size=opt.img_size, transform=data_aug, multiscale=opt.multiscale_training)
+    dataset = COCODataset(opt.dataset_path, img_size=opt.img_size, transform=data_aug, multiscale=opt.multiscale_training)
 
     # Creating data indices for training and validation splits:
     dataset_size = len(dataset)
@@ -131,6 +140,7 @@ if __name__ == "__main__":
         "conf_noobj",
     ]
 
+    best_loss = 999999999
     # Start training
     for epoch in range(opt.epochs):
         model.train()
@@ -141,7 +151,7 @@ if __name__ == "__main__":
         for batch_i, (img_paths, imgs, targets) in enumerate(train_loader):
 
             batches_done = len(train_loader) * epoch + batch_i
-            print("\t- Batch {}/{}".format(batch_i, len(train_loader)))
+            print("\t- Batch {}/{}".format(batch_i+1, len(train_loader)))
 
             # Input target => image_i + class_id + REL(cxcywh)
             # Output target => ABS(cxcywh) + obj_conf + class_prob + class_id
@@ -173,40 +183,41 @@ if __name__ == "__main__":
                 optimizer.step()
                 optimizer.zero_grad()
 
+            # ----------------
+            #   Log progress
+            # ----------------
+
+            log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(train_loader))
+            metric_table = [["Metrics", *["YOLO Layer {}".format(i) for i in range(len(model.yolo_layers))]]]
+
+            # Log metrics at each YOLO layer
+            for i, metric in enumerate(metrics):
+                formats = {m: "%.6f" for m in metrics}
+                formats["grid_size"] = "%2d"
+                formats["cls_acc"] = "%.2f%%"
+                row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
+                metric_table += [[metric, *row_metrics]]
+
+                # Tensorboard logging
+                tensorboard_log = []
+                for j, yolo in enumerate(model.yolo_layers):
+                    for name, metric in yolo.metrics.items():
+                        if name != "grid_size":
+                            tensorboard_log += [("{}_{}".format(name, j+1), metric)]
+                tensorboard_log += [("loss", loss.item())]
+                logger.list_of_scalars_summary(tensorboard_log, batches_done)
+
+            log_str += AsciiTable(metric_table).table
+            log_str += "\nTotal loss {}".format(loss.item())
+
+            # Determine approximate time left for epoch
+            epoch_batches_left = len(train_loader) - (batch_i + 1)
+            time_left = datetime.timedelta(seconds=epoch_batches_left * (time.time() - start_time) / (batch_i + 1))
+            log_str += "\n---- ETA {}".format(time_left)
+
+            print(log_str)
+
             model.seen += imgs.size(0)
-
-        # ----------------
-        #   Log progress
-        # ----------------
-        log_str = "\n------------ [Epoch %d/%d summary] ------------\n" % (epoch, opt.epochs)
-        metric_table = [["Metrics", *["YOLO Layer {}".format(i) for i in range(len(model.yolo_layers))]]]
-        # Log metrics at each YOLO layer
-        for i, metric in enumerate(metrics):
-            formats = {m: "%.6f" for m in metrics}
-            formats["grid_size"] = "%2d"
-            formats["cls_acc"] = "%.2f%%"
-            row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
-            metric_table += [[metric, *row_metrics]]
-
-            # Tensorboard logging
-            tensorboard_log = []
-            for j, yolo in enumerate(model.yolo_layers):
-                for name, metric in yolo.metrics.items():
-                    if name != "grid_size":
-                        tensorboard_log += [("{}_{}".format(name, j+1), metric)]
-            tensorboard_log += [("loss", loss.item())]
-            logger.list_of_scalars_summary(tensorboard_log, epoch)
-
-        log_str += AsciiTable(metric_table).table
-        log_str += "\nTotal loss ".format(loss.item())
-
-        # Determine approximate time left for epoch
-        epoch_batches_left = len(train_loader) - (batch_i + 1)
-        time_left = datetime.timedelta(seconds=epoch_batches_left * (time.time() - start_time) / (batch_i + 1))
-        log_str += "\n---- ETA {}".format(time_left)
-
-        print(log_str)
-
 
         #
         # if epoch % opt.evaluation_interval == 0:
@@ -236,9 +247,11 @@ if __name__ == "__main__":
         #     print(AsciiTable(ap_table).table)
         #     print("---- mAP".format(AP.mean()))
 
-        if epoch % opt.checkpoint_interval == 0:
-            filename = "checkpoints/yolov3_ckpt_{}.pth".format(epoch)
-            print("Saving model: {}".format(filename))
+        # if epoch % opt.checkpoint_interval == 0:
+        if loss < best_loss:
+            best_loss = loss
+            filename = "checkpoints/yolov3_best.pth"
+            print("Saving model (best_loss={}): {}".format(best_loss, filename))
             torch.save(model.state_dict(), filename)
 
     # Save last mode

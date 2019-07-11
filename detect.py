@@ -28,13 +28,13 @@ if __name__ == "__main__":
     # parser.add_argument("--class_path", type=str, default="datasets/equations/equations.names", help="path to class label file")
 
     # COCO
-    parser.add_argument("--image_folder", type=str, default="datasets/equations/resized/1024x1024-test", help="path to dataset")
-    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-608.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-608.weights", help="path to weights file")
+    parser.add_argument("--image_folder", type=str, default="datasets/coco/train2014/images", help="path to dataset")
+    parser.add_argument("--model_def", type=str, default="models/pretrained/YOLOv3/yolov3-tiny4math.cfg", help="path to model definition file")
+    parser.add_argument("--weights_path", type=str, default="models/pretrained/YOLOv3/yolov3-tiny.weights", help="path to weights file")
     parser.add_argument("--class_path", type=str, default="datasets/coco/coco.names", help="path to class label file")
 
-    parser.add_argument("--conf_thres", type=float, default=0.5, help="object confidence threshold")
-    parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
+    parser.add_argument("--conf_thres", type=float, default=0.501, help="object confidence threshold")
+    parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--img_size", type=int, default=1024, help="size of each image dimension")
@@ -52,8 +52,8 @@ if __name__ == "__main__":
 
     # Initiate model
     model = Darknet(config_path=opt.model_def, img_size=opt.img_size, num_classes=len(class_names), in_channels=3).to(device)
-    #model.apply(weights_init_normal)
-    #
+    model.apply(weights_init_normal)
+
     # # Load weights
     # if opt.weights_path:
     #     if opt.weights_path.endswith(".pth"):
@@ -96,7 +96,10 @@ if __name__ == "__main__":
         print("\t+ Batch %d, Inference Time: %s" % (batch_i, inference_time))
 
         # Show detections
-        process_detections(imgs, detections, opt.img_size, class_names, rescale_bboxes=True, title="Detection result", colors=None)
+        if img_detections:
+            process_detections(imgs, detections, opt.img_size, class_names, rescale_bboxes=True, title="Detection result", colors=None)
+        else:
+            print("\t=> NO DETECTIONS (#{})".format(batch_i+1))
 
         # Save image and detections
         img_paths.extend(paths)

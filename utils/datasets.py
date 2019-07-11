@@ -55,10 +55,12 @@ class EQDataset(Dataset):
         image_path = os.path.join(self.wd, image_data['filename'])
         classes_id = torch.from_numpy(np.array([int(x['category_id']) for x in self.annotations[image_id]]))
         bboxes_xywh = torch.from_numpy(np.array([x['bbox'] for x in self.annotations[image_id]]))
-        bboxes_xyxy = xywh2xyxy(bboxes_xywh)
 
         # Load image as RGB
         img = np.asarray(Image.open(image_path).convert('RGB'))  #L
+
+        # Convert bboxes to ABS(xyxy)
+        bboxes_xyxy = xywh2xyxy(bboxes_xywh)
 
         # Sanity check I
         #plot_bboxes(img, bboxes_xyxy, title="Original")
@@ -217,32 +219,38 @@ class COCODataset(Dataset):
 
         # Get images
         self.img_files = []
+        self.label_files = []
         for file in os.listdir(folder_path):
-            self.img_files.append(os.path.join(folder_path, file))
-
-        self.label_files = [
-            path.replace("images", "labels").replace(".png", ".txt").replace(".jpg", ".txt")
-            for path in self.img_files
-        ]
+            img_path = os.path.join(folder_path, file)
+            label_path = img_path.replace("images", "labels").replace(".png", ".txt").replace(".jpg", ".txt")
+                        # Check if label file exists
+            if os.path.exists(label_path):
+                self.img_files.append(img_path)
+                self.label_files.append(label_path)
 
     def __getitem__(self, index):
+        # index = 27542
+        # print("Index: ".format(index))
+
         # Get paths
         img_path = self.img_files[index % len(self.img_files)].rstrip()
         label_path = self.label_files[index % len(self.img_files)].rstrip()
 
         # Load annotations
         annotations = np.loadtxt(label_path).reshape(-1, 5)  # class_id + cxcywh
-        classes_id = annotations[:, 0]
+        classes_id = torch.from_numpy(annotations[:, 0])
         bboxes_cxcywh = torch.from_numpy(annotations[:, 1:])
-        bboxes_xyxy_rel = cxcywh2xyxy(bboxes_cxcywh)
 
         # Load image as RGB
         img = np.asarray(Image.open(img_path).convert('RGB'))  # L
         img_h, img_w, img_c = img.shape
 
-        # Sanity check I
+        # Convert bboxes to ABS(xyxy)
+        bboxes_xyxy_rel = cxcywh2xyxy(bboxes_cxcywh)
         bboxes_xyxy_abs = rel2abs(bboxes_xyxy_rel, img_h, img_w)
-        #plot_bboxes(img, bboxes_xyxy_abs, title="Original")
+
+        # Sanity check I
+        # plot_bboxes(img, bboxes_xyxy_abs, title="Original")
 
         # Convert bboxes to albumentations [x_rel, y_rel, width_rel, height_rel]
         bboxes_albu = convert_bboxes_to_albumentations(bboxes_xyxy_abs, source_format='pascal_voc', rows=img.shape[0], cols=img.shape[1])
@@ -270,7 +278,8 @@ class COCODataset(Dataset):
         bboxes_xyxy = torch.tensor(bboxes_xyxy)
         bboxes_xyxy, kept_indices = fix_bboxes(bboxes_xyxy, h, w)
         classes_id = classes_id[kept_indices]  # Math dimensions
-        # Sanity check III
+
+        # # Sanity check III
         # plot_bboxes(img, bboxes_xyxy, title="Augmented Fix")
 
         # Convert (PIL/Numpy) to PyTorch Tensor
@@ -287,7 +296,7 @@ class COCODataset(Dataset):
 
         # Transform targets (bboxes)
         targets = torch.zeros((len(boxes_cxcywh), 6))  # 0(batch), class_id + xywh (REL)
-        targets[:, 1] = torch.from_numpy(classes_id)
+        targets[:, 1] = classes_id
         targets[:, 2:] = boxes_cxcywh
 
         return img_path, img, targets

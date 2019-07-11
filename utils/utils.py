@@ -787,31 +787,39 @@ def fix_bboxes(bboxes_xyxy, h, w, area_thres=5*5):
     Area in pixels
     """
     # x1 ------------------------------
-    x1_outL_idxs = bboxes_xyxy[:, 0] < 0
+    x1_outL_mask = bboxes_xyxy[:, 0] < 0
+    x1_outL_idxs = x1_outL_mask.nonzero().reshape(-1)
     bboxes_xyxy[x1_outL_idxs, 0] = 0
 
-    x1_outR_idxs = bboxes_xyxy[:, 0] >= w
+    x1_outR_mask = bboxes_xyxy[:, 0] >= w
+    x1_outR_idxs = x1_outR_mask.nonzero().reshape(-1)
     bboxes_xyxy[x1_outR_idxs, 0] = w
 
     # y1 ------------------------------
-    y1_outT_idxs = bboxes_xyxy[:, 1] < 0
+    y1_outT_mask = bboxes_xyxy[:, 1] < 0
+    y1_outT_idxs = y1_outT_mask.nonzero().reshape(-1)
     bboxes_xyxy[y1_outT_idxs, 1] = 0
 
-    y1_outB_idxs = bboxes_xyxy[:, 1] >= h
+    y1_outB_mask = bboxes_xyxy[:, 1] >= h
+    y1_outB_idxs = y1_outB_mask.nonzero().reshape(-1)
     bboxes_xyxy[y1_outB_idxs, 1] = h
 
     # x2 ------------------------------
-    x2_outL_idxs = bboxes_xyxy[:, 2] < 0
+    x2_outL_mask = bboxes_xyxy[:, 2] < 0
+    x2_outL_idxs = x2_outL_mask.nonzero().reshape(-1)
     bboxes_xyxy[x2_outL_idxs, 2] = 0
 
-    x2_outR_idxs = bboxes_xyxy[:, 2] >= w
+    x2_outR_mask = bboxes_xyxy[:, 2] >= w
+    x2_outR_idxs = x2_outR_mask.nonzero().reshape(-1)
     bboxes_xyxy[x2_outR_idxs, 2] = w
 
     # y2 ------------------------------
-    y2_outT_idxs = bboxes_xyxy[:, 3] < 0
+    y2_outT_mask = bboxes_xyxy[:, 3] < 0
+    y2_outT_idxs = y2_outT_mask.nonzero().reshape(-1)
     bboxes_xyxy[y2_outT_idxs, 3] = 0
 
-    y2_outB_idxs = bboxes_xyxy[:, 3] >= h
+    y2_outB_mask = bboxes_xyxy[:, 3] >= h
+    y2_outB_idxs = y2_outB_mask.nonzero().reshape(-1)
     bboxes_xyxy[y2_outB_idxs, 3] = h
 
     # Compute area
@@ -820,7 +828,8 @@ def fix_bboxes(bboxes_xyxy, h, w, area_thres=5*5):
     area = bbox_w * bbox_y
 
     # Return those with the area greater than the threshold
-    bboxes_area_idxs = area >= area_thres  # in pixels
+    bboxes_area_mask = area >= area_thres  # in pixels
+    bboxes_area_idxs = bboxes_area_mask.nonzero().reshape(-1)
     bboxes_xyxy = bboxes_xyxy[bboxes_area_idxs]
 
     return bboxes_xyxy, bboxes_area_idxs
