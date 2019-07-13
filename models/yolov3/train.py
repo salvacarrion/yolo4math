@@ -27,27 +27,15 @@ if __name__ == "__main__":
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--model_def", type=str, default=BASE_PATH+"/config/yolov3-math.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
+    parser.add_argument("--weights_path", type=str, default="checkpoints/yolov3_best.pht", help="if specified starts from checkpoint model")
     parser.add_argument("--input_size", type=int, default=1024, help="size of each image dimension")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=False, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.0, help="validation split [0..1]")
+    parser.add_argument("--conf_thres", type=float, default=0.1, help="object confidence threshold")
+    parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
-
-    # # COCO
-    # parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
-    # parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
-    # parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
-    # parser.add_argument("--model_def", type=str, default="config/yolov3.cfg", help="path to model definition file")
-    # parser.add_argument("--data_config", type=str, default="config/coco.data", help="path to data config file")
-    # parser.add_argument("--pretrained_weights", type=str, help="if specified starts from checkpoint model")
-    # parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
-    # parser.add_argument("--img_size", type=int, default=416, help="size of each image dimension")
-    # parser.add_argument("--checkpoint_interval", type=int, default=1, help="interval between saving model weights")
-    # parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
-    # parser.add_argument("--compute_map", default=False, help="if True computes mAP every tenth batch")
-    # parser.add_argument("--multiscale_training", default=False, help="allow for multi-scale training")
     opt = parser.parse_args()
     print(opt)
 
@@ -55,6 +43,7 @@ if __name__ == "__main__":
     os.makedirs(opt.logdir, exist_ok=True)
     os.makedirs(opt.checkpoint_dir, exist_ok=True)
 
+    # Setup logger
     logger = Logger(opt.logdir)
 
     # Get data configuration
@@ -149,7 +138,7 @@ if __name__ == "__main__":
             targets = format2yolo(targets)
 
             # Sanity check I (img_path => only default transformations can be reverted)
-            # f_img = img2img(imgs[0])
+            f_img = img2img(imgs[0])
             # fake_targets = in_target2out_target(targets, out_h=f_img.shape[0], out_w=f_img.shape[1])
             # process_detections([f_img], [fake_targets], opt.input_size, class_names, rescale_bboxes=False, title="Augmented final ({})".format(img_paths[0]), colors=None)
 
@@ -163,14 +152,14 @@ if __name__ == "__main__":
             loss_sum += loss.item()
 
             # Sanity check II
-            # outputs[..., :4] = cxcywh2xyxy(outputs[..., :4])
-            # detections = remove_low_conf(outputs, conf_thres=opt.conf_thres)
-            # detections = keep_max_class(detections)
-            # detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
-            # if detections:
-            #     process_detections([f_img], [detections[0]], opt.img_size, class_names, rescale_bboxes=False, title="Detection result", colors=None)
-            # else:
-            #     print("NO DETECTIONS")
+            outputs[..., :4] = cxcywh2xyxy(outputs[..., :4])
+            detections = remove_low_conf(outputs, conf_thres=opt.conf_thres)
+            detections = keep_max_class(detections)
+            detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
+            if detections:
+                process_detections([f_img], [detections[0]], opt.img_size, class_names, rescale_bboxes=False, title="Detection result", colors=None)
+            else:
+                print("NO DETECTIONS")
 
             if batches_done % opt.gradient_accumulations:
                 # Accumulates gradient before each step
