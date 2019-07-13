@@ -156,6 +156,7 @@ def resize_bboxes(bboxes, coords):
 
     return new_bboxes
 
+
 def xywh2xyxy(x):
     y = x.new(x.shape)  # copy array shape
     y[..., 0] = x[..., 0]
@@ -163,6 +164,7 @@ def xywh2xyxy(x):
     y[..., 2] = x[..., 0] + x[..., 2]
     y[..., 3] = x[..., 1] + x[..., 3]
     return y
+
 
 def xywh2cxcywh(x):
     # From x_min, y_min, width, height => center_x, center_y, w, h
@@ -173,6 +175,7 @@ def xywh2cxcywh(x):
     y[..., 3] = x[..., 3]  # Abs height
     return y
 
+
 def cxcywh2xyxy(x):
     # From [ABS/REL](center_x, center_y, w, h) => (x1, y1, x2, y2)
     y = x.new(x.shape)  # copy array shape
@@ -182,6 +185,7 @@ def cxcywh2xyxy(x):
     y[..., 3] = x[..., 1] + x[..., 3] / 2  # y2 = center_y + height/2
     return y
 
+
 def cxcywh2xywh(x):
     y = x.new(x.shape)  # copy array shape
     y[..., 0] = (x[..., 0] - x[..., 2] / 2)  # center_x = x1 + width/2
@@ -190,6 +194,7 @@ def cxcywh2xywh(x):
     y[..., 3] = x[..., 3]  # Abs height
     return y
 
+
 def xyxy2cxcywh(x):
     y = x.new(x.shape)  # copy array shape
     y[..., 0] = (x[..., 0] + x[..., 2]) / 2  # center_x = (x1 + x2)/2
@@ -197,6 +202,16 @@ def xyxy2cxcywh(x):
     y[..., 2] = x[..., 2] - x[..., 0]
     y[..., 3] = x[..., 3] - x[..., 1]
     return y
+
+
+def xyxy2xywh(x):
+    y = x.new(x.shape)  # copy array shape
+    y[..., 0] = x[..., 0]  # center_x = (x1 + x2)/2
+    y[..., 1] = x[..., 1]  # center_y = (y1 + y2)/2
+    y[..., 2] = x[..., 2] - x[..., 0]
+    y[..., 3] = x[..., 3] - x[..., 1]
+    return y
+
 
 def rel2abs(x, height, width):
     # From ABS(x, y, w, h) => REL(x, y, w, h) [0.0-1.0]
@@ -215,6 +230,7 @@ def abs2rel(x, height, width):
     y[..., 2] = x[..., 2]/width
     y[..., 3] = x[..., 3]/height
     return y
+
 
 def load_classes(path):
     """
@@ -659,7 +675,13 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
     return precision, recall, AP, f1, ap_class
 
 
-def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=False, txt_y_offset=0.0, title=None, colors=None):
+def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=None, title=None, colors=None):
+    # Settings
+    dpi = 80
+    txt_y_offset = 1.0
+    img = img2img(img)  # Force casting
+    img_h, img_w, _ = img.shape
+
     # Bounding-box colors
     if colors is None:
         cmap = plt.get_cmap("tab20b")
@@ -675,6 +697,7 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
 
     # Config plot
     fig, ax = plt.subplots()
+    fig.set_size_inches(img_w/dpi, img_h/dpi)
     if title:
         fig.canvas.set_window_title(title)
     r = fig.canvas.get_renderer()
@@ -693,7 +716,7 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
         box_h = y2 - y1
 
         # Create a Rectangle patch
-        bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=2, edgecolor=color, facecolor="none")
+        bbox = patches.Rectangle((x1, y1), box_w, box_h, linewidth=1, edgecolor=color, facecolor="none")
         # Add the bbox to the plot
         ax.add_patch(bbox)
         # Add label
@@ -715,14 +738,16 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
 
     # Save image
     if save_path:
-        plt.savefig(save_path, bbox_inches="tight", pad_inches=0.0)
+        plt.savefig(save_path, bbox_inches="tight", pad_inches=0.0, dpi=dpi)
+        print("\t\t=> Image saved! ({})".format(save_path))
 
     # Show image
     if show_results:
         plt.show()
 
 
-def process_detections(img, img_detections, input_size, class_names, show_results=True, save_path=False, txt_y_offset=0.6, title=None, rescale_bboxes=False, colors=None):
+def process_detections(img, img_detections, input_size, class_names, show_results=True, save_path=False,
+                       title=None, rescale_bboxes=False, colors=None, extension='.jpg'):
 
     for img_i, detections in zip(img, img_detections):
         # Parse values
@@ -738,8 +763,14 @@ def process_detections(img, img_detections, input_size, class_names, show_result
         if rescale_bboxes:
             bboxes = rescale_boxes(bboxes, (input_size, input_size), np_img.shape[:2])
 
+        save_path_i = None
+        if save_path:
+            filename = img_i.split('/')[-1].replace('.jpg', extension).replace('.png', extension)
+            save_path_i = "{}/{}".format(save_path, filename)
+
         # Plot bbox
-        plot_bboxes(np_img, bboxes, class_ids, class_probs, class_names, show_results=show_results, save_path=save_path, txt_y_offset=txt_y_offset, title=title, colors=colors)
+        plot_bboxes(np_img, bboxes, class_ids, class_probs, class_names, show_results=show_results,
+                    save_path=save_path_i, title=title, colors=colors)
 
 
 def in_target2out_target(in_target, out_h, out_w):
@@ -748,7 +779,7 @@ def in_target2out_target(in_target, out_h, out_w):
     out_target = torch.zeros((len(in_target), 7))
 
     # Convert bbxoes from REL(cxcywh) => ABS(xyxy)
-    bboxes_cxcywh_rel = in_target[..., 2:]
+    bboxes_cxcywh_rel = in_target[..., 2:]  # relative w.r.t the padding!!!
     boxes_cxcywh_abs = rel2abs(bboxes_cxcywh_rel, out_h, out_w)
     boxes_xyxy_abs = cxcywh2xyxy(boxes_cxcywh_abs)
 

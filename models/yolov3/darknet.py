@@ -7,21 +7,18 @@ from torch.autograd import Variable
 import numpy as np
 
 from utils.parse_config import *
-from utils.utils import build_targets, to_cpu
+from utils.utils import build_targets, to_cpu, non_max_suppression
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 
-def create_modules(module_defs, input_shape, num_classes):
+def create_modules(module_defs):
     """
     Constructs module list of layer blocks from module configuration in module_defs
     """
-    in_h, in_w, in_channels = input_shape
-    assert in_h == in_w
-    img_size = in_h
     hyperparams = module_defs.pop(0)
-    output_filters = [in_channels]
+    output_filters = [int(hyperparams["channels"])]
     module_list = nn.ModuleList()
     for module_i, module_def in enumerate(module_defs):
         modules = nn.Sequential()
@@ -32,7 +29,7 @@ def create_modules(module_defs, input_shape, num_classes):
             kernel_size = int(module_def["size"])
             pad = (kernel_size - 1) // 2
             modules.add_module(
-                "conv_".format(module_i),
+                "conv_{}".format(module_i),
                 nn.Conv2d(
                     in_channels=output_filters[-1],
                     out_channels=filters,
@@ -43,30 +40,30 @@ def create_modules(module_defs, input_shape, num_classes):
                 ),
             )
             if bn:
-                modules.add_module("batch_norm_".format(module_i), nn.BatchNorm2d(filters, momentum=0.9, eps=1e-5))
+                modules.add_module("batch_norm_{}".format(module_i), nn.BatchNorm2d(filters, momentum=0.9, eps=1e-5))
             if module_def["activation"] == "leaky":
-                modules.add_module("leaky_".format(module_i), nn.LeakyReLU(0.1))
+                modules.add_module("leaky_{}".format(module_i), nn.LeakyReLU(0.1))
 
         elif module_def["type"] == "maxpool":
             kernel_size = int(module_def["size"])
             stride = int(module_def["stride"])
             if kernel_size == 2 and stride == 1:
-                modules.add_module("_debug_padding_".format(module_i), nn.ZeroPad2d((0, 1, 0, 1)))
+                modules.add_module("_debug_padding_{}".format(module_i), nn.ZeroPad2d((0, 1, 0, 1)))
             maxpool = nn.MaxPool2d(kernel_size=kernel_size, stride=stride, padding=int((kernel_size - 1) // 2))
-            modules.add_module("maxpool_".format(module_i), maxpool)
+            modules.add_module("maxpool_{}".format(module_i), maxpool)
 
         elif module_def["type"] == "upsample":
             upsample = Upsample(scale_factor=int(module_def["stride"]), mode="nearest")
-            modules.add_module("upsample_".format(module_i), upsample)
+            modules.add_module("upsample_{}".format(module_i), upsample)
 
         elif module_def["type"] == "route":
             layers = [int(x) for x in module_def["layers"].split(",")]
             filters = sum([output_filters[1:][i] for i in layers])
-            modules.add_module("route_".format(module_i), EmptyLayer())
+            modules.add_module("route_{}".format(module_i), EmptyLayer())
 
         elif module_def["type"] == "shortcut":
             filters = output_filters[1:][int(module_def["from"])]
-            modules.add_module("shortcut_".format(module_i), EmptyLayer())
+            modules.add_module("shortcut_{}".format(module_i), EmptyLayer())
 
         elif module_def["type"] == "yolo":
             anchor_idxs = [int(x) for x in module_def["mask"].split(",")]
@@ -74,9 +71,11 @@ def create_modules(module_defs, input_shape, num_classes):
             anchors = [int(x) for x in module_def["anchors"].split(",")]
             anchors = [(anchors[i], anchors[i + 1]) for i in range(0, len(anchors), 2)]
             anchors = [anchors[i] for i in anchor_idxs]
+            num_classes = int(module_def["classes"])
+            img_size = int(hyperparams["height"])
             # Define detection layer
             yolo_layer = YOLOLayer(anchors, num_classes, img_size)
-            modules.add_module("yolo_".format(module_i), yolo_layer)
+            modules.add_module("yolo_{}".format(module_i), yolo_layer)
         # Register module list and number of output filters
         module_list.append(modules)
         output_filters.append(filters)
@@ -107,7 +106,7 @@ class EmptyLayer(nn.Module):
 class YOLOLayer(nn.Module):
     """Detection layer"""
 
-    def __init__(self, anchors, num_classes, img_dim):
+    def __init__(self, anchors, num_classes, img_dim=416):
         super(YOLOLayer, self).__init__()
         self.anchors = anchors
         self.num_anchors = len(anchors)
@@ -123,20 +122,13 @@ class YOLOLayer(nn.Module):
 
     def compute_grid_offsets(self, grid_size, cuda=True):
         self.grid_size = grid_size
+        g = self.grid_size
         FloatTensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
-
-        # Compute network stride (from input to this layer)
         self.stride = self.img_dim / self.grid_size
-
         # Calculate offsets for each grid
-        g = self.grid_size  # Reduce code
         self.grid_x = torch.arange(g).repeat(g, 1).view([1, 1, g, g]).type(FloatTensor)
         self.grid_y = torch.arange(g).repeat(g, 1).t().view([1, 1, g, g]).type(FloatTensor)
-
-        # Scale anchors into the grid space
         self.scaled_anchors = FloatTensor([(a_w / self.stride, a_h / self.stride) for a_w, a_h in self.anchors])
-
-        # Select W, H anchors
         self.anchor_w = self.scaled_anchors[:, 0:1].view((1, self.num_anchors, 1, 1))
         self.anchor_h = self.scaled_anchors[:, 1:2].view((1, self.num_anchors, 1, 1))
 
@@ -155,10 +147,10 @@ class YOLOLayer(nn.Module):
             x.view(num_samples, self.num_anchors, self.num_classes + 5, grid_size, grid_size)
             .permute(0, 1, 3, 4, 2)
             .contiguous()
-        )  # => images, anchors, grid_size, grid_size, num_classes + 5
+        )
 
         # Get outputs
-        x = torch.sigmoid(prediction[..., 0])  # Relative center x (0.3)
+        x = torch.sigmoid(prediction[..., 0])  # Center x
         y = torch.sigmoid(prediction[..., 1])  # Center y
         w = prediction[..., 2]  # Width
         h = prediction[..., 3]  # Height
@@ -169,21 +161,18 @@ class YOLOLayer(nn.Module):
         if grid_size != self.grid_size:
             self.compute_grid_offsets(grid_size, cuda=x.is_cuda)
 
-        # Convert boxes to absolute grid space ([0..31])
-        # select x, y, w, h
+        # Add offset and scale with anchors
         pred_boxes = FloatTensor(prediction[..., :4].shape)
-        # From cell relative to abs grid space (0.3 in cell 5 => 5.3)
-        pred_boxes[..., 0] = x.data + self.grid_x  # Relative center (0.3) + top-left-corner (grid_i: 5) => 5.3
+        pred_boxes[..., 0] = x.data + self.grid_x
         pred_boxes[..., 1] = y.data + self.grid_y
-        # Propagate to all images, anchor[i] to box[i], and then propagate value k [1,1] to grid (S, S)
         pred_boxes[..., 2] = torch.exp(w.data) * self.anchor_w
         pred_boxes[..., 3] = torch.exp(h.data) * self.anchor_h
 
         output = torch.cat(
             (
-                pred_boxes.view(num_samples, -1, 4) * self.stride,  # From grid space to input_image space // images, (hypothesis), xywh
-                pred_conf.view(num_samples, -1, 1),  # images, (hypothesis), obj_conf
-                pred_cls.view(num_samples, -1, self.num_classes),  # images, (hypothesis), classes
+                pred_boxes.view(num_samples, -1, 4) * self.stride,
+                pred_conf.view(num_samples, -1, 1),
+                pred_cls.view(num_samples, -1, self.num_classes),
             ),
             -1,
         )
@@ -245,10 +234,10 @@ class YOLOLayer(nn.Module):
 class Darknet(nn.Module):
     """YOLOv3 object detection model"""
 
-    def __init__(self, config_path, img_size, num_classes, in_channels=3):
+    def __init__(self, config_path, img_size=416):
         super(Darknet, self).__init__()
         self.module_defs = parse_model_config(config_path)
-        self.hyperparams, self.module_list = create_modules(self.module_defs, (img_size, img_size, in_channels), num_classes)
+        self.hyperparams, self.module_list = create_modules(self.module_defs)
         self.yolo_layers = [layer[0] for layer in self.module_list if hasattr(layer[0], "metrics")]
         self.img_size = img_size
         self.seen = 0
@@ -284,12 +273,17 @@ class Darknet(nn.Module):
             self.seen = header[3]  # number of images seen during training
             weights = np.fromfile(f, dtype=np.float32)  # The rest are weights
 
+        # Establish cutoff for loading backbone weights
+        cutoff = None
+        if "darknet53.conv.74" in weights_path:
+            cutoff = 75
+
         ptr = 0
         for i, (module_def, module) in enumerate(zip(self.module_defs, self.module_list)):
             if i == cutoff:
                 break
 
-            # Freeze layers
+                # Freeze layers
             if free_layers and i <= free_layers:
                 for param in module.parameters():
                     param.requires_grad = False
@@ -301,30 +295,30 @@ class Darknet(nn.Module):
                     bn_layer = module[1]
                     num_b = bn_layer.bias.numel()  # Number of biases
                     # Bias
-                    bn_b = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(bn_layer.bias)
+                    bn_b = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(bn_layer.bias)
                     bn_layer.bias.data.copy_(bn_b)
                     ptr += num_b
                     # Weight
-                    bn_w = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(bn_layer.weight)
+                    bn_w = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(bn_layer.weight)
                     bn_layer.weight.data.copy_(bn_w)
                     ptr += num_b
                     # Running Mean
-                    bn_rm = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(bn_layer.running_mean)
+                    bn_rm = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(bn_layer.running_mean)
                     bn_layer.running_mean.data.copy_(bn_rm)
                     ptr += num_b
                     # Running Var
-                    bn_rv = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(bn_layer.running_var)
+                    bn_rv = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(bn_layer.running_var)
                     bn_layer.running_var.data.copy_(bn_rv)
                     ptr += num_b
                 else:
                     # Load conv. bias
                     num_b = conv_layer.bias.numel()
-                    conv_b = torch.from_numpy(weights[ptr:ptr + num_b]).view_as(conv_layer.bias)
+                    conv_b = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(conv_layer.bias)
                     conv_layer.bias.data.copy_(conv_b)
                     ptr += num_b
                 # Load conv. weights
                 num_w = conv_layer.weight.numel()
-                conv_w = torch.from_numpy(weights[ptr:ptr + num_w]).view_as(conv_layer.weight)
+                conv_w = torch.from_numpy(weights[ptr : ptr + num_w]).view_as(conv_layer.weight)
                 conv_layer.weight.data.copy_(conv_w)
                 ptr += num_w
 
