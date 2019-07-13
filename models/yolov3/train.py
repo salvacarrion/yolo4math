@@ -206,4 +206,4 @@ if __name__ == "__main__":
         if avg_loss < best_loss:
             best_loss = avg_loss
             print("Saving best model.... (loss={})".format(best_loss))
-            torch.save(model.state_dict(), opt.checkpoint_dir + "/yolov3_best.pht")
+            torch.save(model.state_dict(), opt.checkpoint_dir + "/yolov3_best.pth")
