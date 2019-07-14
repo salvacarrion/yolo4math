@@ -41,7 +41,7 @@ def evaluate(model, images_path, labels_path, iou_thres, conf_thres, nms_thres, 
         # Extract labels
         labels += targets[:, 1].tolist()
         # Rescale target
-        targets[:, 2:] = cxcywh2xyxy(targets[:, 2:])
+        #targets[:, 2:] = cxcywh2xyxy(targets[:, 2:])
         targets[:, 2:] *= input_size
 
         input_imgs = Variable(input_imgs.type(Tensor), requires_grad=False)
@@ -76,6 +76,9 @@ if __name__ == "__main__":
     parser.add_argument("--validation_split", type=float, default=0.0, help="validation split [0..1]")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
+    parser.add_argument("--iou_thres", type=float, default=0.5, help="iou threshold required to qualify as detected")
+    parser.add_argument("--conf_thres", type=float, default=0.001, help="object confidence threshold")
+    parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
     opt = parser.parse_args()
     print(opt)
 
@@ -83,7 +86,8 @@ if __name__ == "__main__":
 
     data_config = parse_data_config(opt.data_config)
     test_path = data_config["test"]
-    class_names = load_classes(data_config["names"])
+    labels_path = data_config["labels"]
+    class_names = load_classes(data_config["classes"])
 
     # Initiate model
     model = Darknet(config_path=opt.model_def).to(device)
@@ -101,6 +105,7 @@ if __name__ == "__main__":
     precision, recall, AP, f1, ap_class = evaluate(
         model,
         images_path=test_path,
+        labels_path=labels_path,
         iou_thres=opt.iou_thres,
         conf_thres=opt.conf_thres,
         nms_thres=opt.nms_thres,
