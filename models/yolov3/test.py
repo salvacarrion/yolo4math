@@ -36,7 +36,8 @@ def evaluate(model, images_path, labels_path, iou_thres, conf_thres, nms_thres, 
 
     labels = []
     sample_metrics = []  # List of tuples (TP, confs, pred)
-    for batch_i, (_, input_imgs, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
+    # for batch_i, (_, input_imgs, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
+    for batch_i, (_, input_imgs, targets) in enumerate(dataloader):
 
         # Extract labels
         labels += targets[:, 1].tolist()
@@ -69,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--model_def", type=str, default=BASE_PATH+"/config/yolov3-math.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
+    parser.add_argument("--weights_path", type=str, default=BASE_PATH+"/checkpoints/yolov3_best__10.pth", help="if specified starts from checkpoint model")
     parser.add_argument("--input_size", type=int, default=1024, help="size of each image dimension")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=False, help="shuffle dataset")

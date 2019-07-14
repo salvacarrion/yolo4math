@@ -119,6 +119,9 @@ class ListDataset(Dataset):
         targets[:, 1] = bboxes_labels
         targets[:, 2:] = boxes_xywh_rel
 
+        # # [Debug]: Keep class X
+        # targets = targets[targets[:, 1] == 1]
+
         return img_path, img, targets
 
     def collate_fn(self, batch):

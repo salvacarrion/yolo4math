@@ -150,8 +150,8 @@ class YOLOLayer(nn.Module):
         )
 
         # Get outputs
-        x = torch.sigmoid(prediction[..., 0])  # Center x
-        y = torch.sigmoid(prediction[..., 1])  # Center y
+        x = torch.sigmoid(prediction[..., 0])  # Center x (relative in cell)
+        y = torch.sigmoid(prediction[..., 1])  # Center y (relative in cell)
         w = prediction[..., 2]  # Width
         h = prediction[..., 3]  # Height
         pred_conf = torch.sigmoid(prediction[..., 4])  # Conf

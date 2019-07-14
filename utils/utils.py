@@ -596,9 +596,11 @@ def build_targets(pred_boxes, pred_cls, target, anchors, ignore_thres):
     target_boxes = target[:, 2:6] * nG
     gxy = target_boxes[:, :2]
     gwh = target_boxes[:, 2:]
+
     # Get anchors with best iou
     ious = torch.stack([bbox_wh_iou(anchor, gwh) for anchor in anchors])
     best_ious, best_n = ious.max(0)
+
     # Separate target values
     b, target_labels = target[:, :2].long().t()
     gx, gy = gxy.t()
@@ -744,6 +746,7 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
     # Show image
     if show_results:
         plt.show()
+    plt.close()
 
 
 def process_detections(img, img_detections, input_size, class_names, show_results=True, save_path=False,
@@ -865,4 +868,11 @@ def fix_bboxes(bboxes_xyxy, h, w, area_thres=5*5):
 
     return bboxes_xyxy, bboxes_area_idxs
 
+
+def format2yolo(targets):
+    new_target = targets.clone().detach()
+    # Boxes to YOLO format: From REL(xywh) to REL(cxcywh)
+    bboxes_xywh_rel = new_target[:, 2:]
+    new_target[:, 2:] = xywh2cxcywh(bboxes_xywh_rel)
+    return new_target
 

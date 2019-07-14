@@ -20,11 +20,11 @@ from utils.datasets import *
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image_folder", type=str, default="/home/salvacarrion/Documents/datasets/equations/test", help="path to dataset")
+    parser.add_argument("--image_folder", type=str, default="/home/salvacarrion/Documents/datasets/equations/train", help="path to dataset")
     parser.add_argument("--model_def", type=str, default=BASE_PATH+"/config/yolov3-math.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default=BASE_PATH+"/checkpoints/yolov3_best__10.pth", help="path to weights file")
+    parser.add_argument("--weights_path", type=str, default=BASE_PATH+"/checkpoints/yolov3_best.pth", help="path to weights file")
     parser.add_argument("--class_path", type=str, default="/home/salvacarrion/Documents/datasets/equations/class.names", help="path to class label file")
-    parser.add_argument("--conf_thres", type=float, default=0.7, help="object confidence threshold")
+    parser.add_argument("--conf_thres", type=float, default=0.6, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--batch_size", type=int, default=1, help="size of the batches")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")

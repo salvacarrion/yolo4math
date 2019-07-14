@@ -15,7 +15,6 @@ from terminaltables import AsciiTable
 
 from models.yolov3.darknet import Darknet
 
-from utils.logger import *
 from utils.datasets import *
 from utils.parse_config import *
 
@@ -28,15 +27,16 @@ if __name__ == "__main__":
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--model_def", type=str, default=BASE_PATH+"/config/yolov3-math.cfg", help="path to model definition file")
-    parser.add_argument("--weights_path", type=str, default="checkpoints/yolov3_best.pht", help="if specified starts from checkpoint model")
+    parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
     parser.add_argument("--input_size", type=int, default=1024, help="size of each image dimension")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=False, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.0, help="validation split [0..1]")
     parser.add_argument("--conf_thres", type=float, default=0.1, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.4, help="iou thresshold for non-maximum suppression")
-    parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
+    parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
+    parser.add_argument("--log_name", type=str, default="exp-1", help="name of the experiment (tensorboard)")
     opt = parser.parse_args()
     print(opt)
 
@@ -112,16 +112,13 @@ if __name__ == "__main__":
     ]
 
     # Writer will output to ./runs/ directory by default
-    writer = SummaryWriter(opt.logdir)
-
-    def format2yolo(targets):
-        new_target = targets.clone().detach()
-        # Boxes to YOLO format: From REL(xywh) to REL(cxcywh)
-        bboxes_xywh_rel = new_target[:, 2:]
-        new_target[:, 2:] = xywh2cxcywh(bboxes_xywh_rel)
-        return new_target
+    writer = SummaryWriter(opt.logdir + "/{}".format(opt.log_name))
+    # Create graph
+    # dummy_input = Variable(torch.zeros(1, 3, opt.input_size, opt.input_size).to(device))
+    # writer.add_graph(model, dummy_input, True)
 
     best_loss = 999999999
+    batches_done = 0
     # Start training
     for epoch in range(opt.epochs):
         start_time = time.time()
@@ -129,10 +126,14 @@ if __name__ == "__main__":
         loss_sum = 0
 
         # Train model
-        for batch_i, (img_paths, imgs, targets) in enumerate(train_loader):
-            batches_done = len(train_loader) * epoch + batch_i
+        for batch_i, (img_paths, imgs, targets) in enumerate(train_loader, 1):
             # Input target => image_i + class_id + REL(cxcywh)
             # Output target => ABS(cxcywh) + obj_conf + class_prob + class_id
+
+            # Ignore empty targets (problems with the data)
+            if len(targets) == 0:
+                continue
+            batches_done += 1
 
             # Format boxes to YOLO format REL(cxcywh)
             targets = format2yolo(targets)
@@ -166,12 +167,39 @@ if __name__ == "__main__":
                 optimizer.step()
                 optimizer.zero_grad()
 
-            # Tensorboard logging
-            # [TB] Scalar
-            writer.add_scalar("loss", loss.item())
-            # [TB] Histogram
-            for name, param in model.named_parameters():
-                writer.add_histogram(name, param.clone().cpu().data.numpy())
+            # ********* PRINT PROCESS *********
+            # Build log and add data to tensorboard
+            log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch+1, opt.epochs, batch_i, len(train_loader))
+            metric_table = [["Metrics", *["YOLO Layer {}".format(i+1) for i in range(len(model.yolo_layers))]]]
+            # Log metrics at each YOLO layer
+            for i, metric in enumerate(metrics):
+                # Add relevant data
+                formats = {m: "%.6f" for m in metrics}
+                formats["grid_size"] = "%2d"
+                formats["cls_acc"] = "%.2f%%"
+                row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
+                metric_table += [[metric, *row_metrics]]
+            log_str += AsciiTable(metric_table).table
+            log_str += "\nTotal loss {:.5f}".format(loss.item())
+
+            # Determine approximate time left for epoch
+            epoch_batches_left = len(train_loader) - batch_i
+            avg_time_minibatch = (time.time() - start_time) / batch_i
+            time_left = datetime.timedelta(seconds=epoch_batches_left * avg_time_minibatch)
+            log_str += "\nETA: {}".format(time_left)
+            print(log_str)
+
+            # ********* LOG PROCESS *********
+            # [TB] Scalars
+            for j, yolo in enumerate(model.yolo_layers):
+                for name, metric in yolo.metrics.items():
+                    if name != "grid_size":
+                        writer.add_scalar(tag="{}_{}".format(name, j + 1), scalar_value=metric, global_step=batches_done)
+            writer.add_scalar(tag="loss", scalar_value=loss.item(), global_step=batches_done)
+
+        # [TB] Histogram / one per epoch (takes more time (0.x seconds))
+        for name, param in model.named_parameters():
+            writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch)
 
         # Save best model
         avg_loss = loss_sum / len(train_loader)
