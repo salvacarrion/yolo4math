@@ -9,6 +9,7 @@ sys.path.insert(0, BASE_PATH)
 
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
+from torch.utils.tensorboard import SummaryWriter
 
 from terminaltables import AsciiTable
 
@@ -42,9 +43,6 @@ if __name__ == "__main__":
     # Make default dirs
     os.makedirs(opt.logdir, exist_ok=True)
     os.makedirs(opt.checkpoint_dir, exist_ok=True)
-
-    # Setup logger
-    logger = Logger(opt.logdir)
 
     # Get data configuration
     data_config = parse_data_config(opt.data_config)
@@ -113,6 +111,8 @@ if __name__ == "__main__":
         "conf_noobj",
     ]
 
+    # Writer will output to ./runs/ directory by default
+    writer = SummaryWriter(opt.logdir)
 
     def format2yolo(targets):
         new_target = targets.clone().detach()
@@ -138,7 +138,7 @@ if __name__ == "__main__":
             targets = format2yolo(targets)
 
             # Sanity check I (img_path => only default transformations can be reverted)
-            f_img = img2img(imgs[0])
+            # f_img = img2img(imgs[0])
             # fake_targets = in_target2out_target(targets, out_h=f_img.shape[0], out_w=f_img.shape[1])
             # process_detections([f_img], [fake_targets], opt.input_size, class_names, rescale_bboxes=False, title="Augmented final ({})".format(img_paths[0]), colors=None)
 
@@ -152,54 +152,26 @@ if __name__ == "__main__":
             loss_sum += loss.item()
 
             # Sanity check II
-            outputs[..., :4] = cxcywh2xyxy(outputs[..., :4])
-            detections = remove_low_conf(outputs, conf_thres=opt.conf_thres)
-            detections = keep_max_class(detections)
-            detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
-            if detections:
-                process_detections([f_img], [detections[0]], opt.img_size, class_names, rescale_bboxes=False, title="Detection result", colors=None)
-            else:
-                print("NO DETECTIONS")
+            # outputs[..., :4] = cxcywh2xyxy(outputs[..., :4])
+            # detections = remove_low_conf(outputs, conf_thres=opt.conf_thres)
+            # detections = keep_max_class(detections)
+            # detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
+            # if detections:
+            #     process_detections([f_img], [detections[0]], opt.img_size, class_names, rescale_bboxes=False, title="Detection result", colors=None)
+            # else:
+            #     print("NO DETECTIONS")
 
             if batches_done % opt.gradient_accumulations:
                 # Accumulates gradient before each step
                 optimizer.step()
                 optimizer.zero_grad()
 
-            # ----------------
-            #   Log progress
-            # ----------------
-
-            log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch, opt.epochs, batch_i, len(train_loader))
-            metric_table = [["Metrics", *["YOLO Layer {}".format(i) for i in range(len(model.yolo_layers))]]]
-
-            # Log metrics at each YOLO layer
-            for i, metric in enumerate(metrics):
-                formats = {m: "%.6f" for m in metrics}
-                formats["grid_size"] = "%2d"
-                formats["cls_acc"] = "%.2f%%"
-                row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
-                metric_table += [[metric, *row_metrics]]
-
-                # Tensorboard logging
-                tensorboard_log = []
-                for j, yolo in enumerate(model.yolo_layers):
-                    for name, metric in yolo.metrics.items():
-                        if name != "grid_size":
-                            tensorboard_log += [("{}_{}".format(name, j+1), metric)]
-                tensorboard_log += [("loss", loss.item())]
-                logger.list_of_scalars_summary(tensorboard_log, batches_done)
-
-            log_str += AsciiTable(metric_table).table
-            log_str += "\nTotal loss {}".format(loss.item())
-
-            # Determine approximate time left for epoch
-            epoch_batches_left = len(train_loader) - (batch_i + 1)
-            time_left = datetime.timedelta(seconds=epoch_batches_left * (time.time() - start_time) / (batch_i + 1))
-            log_str += "\n---- ETA {}".format(time_left)
-
-            print(log_str)
-            model.seen += imgs.size(0)
+            # Tensorboard logging
+            # [TB] Scalar
+            writer.add_scalar("loss", loss.item())
+            # [TB] Histogram
+            for name, param in model.named_parameters():
+                writer.add_histogram(name, param.clone().cpu().data.numpy())
 
         # Save best model
         avg_loss = loss_sum / len(train_loader)
@@ -207,3 +179,6 @@ if __name__ == "__main__":
             best_loss = avg_loss
             print("Saving best model.... (loss={})".format(best_loss))
             torch.save(model.state_dict(), opt.checkpoint_dir + "/yolov3_best.pth")
+
+    # Close writer
+    writer.close()
