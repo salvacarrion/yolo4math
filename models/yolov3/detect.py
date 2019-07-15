@@ -92,5 +92,5 @@ if __name__ == "__main__":
         else:
             print("\t\t=> NO DETECTIONS: (#{})".format(img_paths[0]))
 
-        if batch_i == 5:
+        if batch_i == 50:
             break

@@ -641,21 +641,21 @@ from torch.autograd import Variable
 import torch.optim as optim
 
 
-def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batch_size):
+def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, input_size, batch_size):
     model.eval()
 
     Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
 
     labels = []
     sample_metrics = []  # List of tuples (TP, confs, pred)
-    # for batch_i, (_, imgs, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
-    for batch_i, (_, imgs, targets) in enumerate(dataloader):
-        print("\t- Evaluating batch #{}".format(batch_i))
+    for batch_i, (_, imgs, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
+    # for batch_i, (_, imgs, targets) in enumerate(dataloader):
+    #     print("\t- Evaluating batch #{}".format(batch_i))
 
         # Extract labels
         labels += targets[:, 1].tolist()
         # Rescale target
-        targets[:, 2:] = rel2abs(cxcywh2xyxy(targets[:, 2:]), img_size, img_size)  # From REL [cxcywh] to ABS[xyxy]
+        targets[:, 2:] = rel2abs(cxcywh2xyxy(targets[:, 2:]), input_size, input_size)  # From REL [cxcywh] to ABS[xyxy]
 
         imgs = Variable(imgs.type(Tensor), requires_grad=False)
 
@@ -668,12 +668,10 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, img_size, batc
 
         sample_metrics += get_batch_statistics(detections, targets, iou_threshold=iou_thres)
 
-    if sample_metrics:
-        # Concatenate sample statistics
-        true_positives, pred_scores, pred_labels = [np.concatenate(x, axis=0) for x in list(zip(*sample_metrics))]
-        precision, recall, AP, f1, ap_class = ap_per_class(true_positives, pred_scores, pred_labels, labels)
-    else:
-        pass
+    # Concatenate sample statistics
+    true_positives, pred_scores, pred_labels = [np.concatenate(x, axis=0) for x in list(zip(*sample_metrics))]
+    precision, recall, AP, f1, ap_class = ap_per_class(true_positives, pred_scores, pred_labels, labels)
+
     return precision, recall, AP, f1, ap_class
 
 
