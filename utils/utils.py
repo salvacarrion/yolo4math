@@ -341,7 +341,7 @@ def weights_init_normal(m):
         torch.nn.init.constant_(m.bias.data, 0.0)
 
 
-def rescale_boxes(boxes, current_shape, original_shape):
+def rescale_boxes(boxes, current_shape, original_shape, relxyxy=False):
     """
     Rescales bounding boxes to the original shape
     Expects boxes in ABS(xyxy)
@@ -361,6 +361,9 @@ def rescale_boxes(boxes, current_shape, original_shape):
     boxes[:, 1] = ((boxes[:, 1] - pad_y // 2) / unpad_h) * orig_h
     boxes[:, 2] = ((boxes[:, 2] - pad_x // 2) / unpad_w) * orig_w
     boxes[:, 3] = ((boxes[:, 3] - pad_y // 2) / unpad_h) * orig_h
+
+
+
     return boxes
 
 
@@ -489,7 +492,7 @@ def compute_ap(recall, precision):
     return ap
 
 
-def get_batch_statistics(outputs, targets, iou_threshold):
+def get_true_positives(outputs, targets, iou_threshold):
     """ Compute true positives, predicted scores and predicted labels per sample """
     batch_metrics = []
     for sample_i in range(len(outputs)):
@@ -520,7 +523,7 @@ def get_batch_statistics(outputs, targets, iou_threshold):
                 if pred_label not in target_labels:
                     continue
 
-                iou, box_index = bbox_iou(pred_box.unsqueeze(0), target_boxes).max(0)
+                iou, box_index = bbox_iou(pred_box.unsqueeze(0), target_boxes).max(dim=0)
                 if iou >= iou_threshold and box_index not in detected_boxes:
                     true_positives[pred_i] = 1
                     detected_boxes += [box_index]
@@ -535,6 +538,49 @@ def bbox_wh_iou(wh1, wh2):
     inter_area = torch.min(w1, w2) * torch.min(h1, h2)
     union_area = (w1 * h1 + 1e-16) + w2 * h2 - inter_area
     return inter_area / union_area
+
+
+def bbox_iouV2(box1, box2, x1y1x2y2=True):
+    """
+    Returns the IoU of two bounding boxes
+    """
+    if not x1y1x2y2:
+        # Transform from center and width to exact coordinates
+        b1_x1, b1_x2 = box1[:, 0] - box1[:, 2] / 2, box1[:, 0] + box1[:, 2] / 2
+        b1_y1, b1_y2 = box1[:, 1] - box1[:, 3] / 2, box1[:, 1] + box1[:, 3] / 2
+        b2_x1, b2_x2 = box2[:, 0] - box2[:, 2] / 2, box2[:, 0] + box2[:, 2] / 2
+        b2_y1, b2_y2 = box2[:, 1] - box2[:, 3] / 2, box2[:, 1] + box2[:, 3] / 2
+    else:
+        # Get the coordinates of bounding boxes
+        b1_x1, b1_y1, b1_x2, b1_y2 = box1[:, 0], box1[:, 1], box1[:, 2], box1[:, 3]
+        b2_x1, b2_y1, b2_x2, b2_y2 = box2[:, 0], box2[:, 1], box2[:, 2], box2[:, 3]
+
+    # Format boxes
+    b1_y2 = b1_y2.unsqueeze(1)
+    b1_x1 = b1_x1.unsqueeze(1)
+    b1_y1 = b1_y1.unsqueeze(1)
+    b1_x2 = b1_x2.unsqueeze(1)
+    b2_x1 = b2_x1.repeat(len(box1), 1)
+    b2_y1 = b2_y1.repeat(len(box1), 1)
+    b2_x2 = b2_x2.repeat(len(box1), 1)
+    b2_y2 = b2_y2.repeat(len(box1), 1)
+
+    # get the corrdinates of the intersection rectangle
+    inter_rect_x1 = torch.max(b1_x1, b2_x1)
+    inter_rect_y1 = torch.max(b1_y1, b2_y1)
+    inter_rect_x2 = torch.min(b1_x2, b2_x2)
+    inter_rect_y2 = torch.min(b1_y2, b2_y2)
+    # Intersection area
+    inter_area = torch.clamp(inter_rect_x2 - inter_rect_x1 + 1, min=0) * torch.clamp(
+        inter_rect_y2 - inter_rect_y1 + 1, min=0
+    )
+    # Union Area
+    b1_area = (b1_x2 - b1_x1 + 1) * (b1_y2 - b1_y1 + 1)
+    b2_area = (b2_x2 - b2_x1 + 1) * (b2_y2 - b2_y1 + 1)
+
+    iou = inter_area / (b1_area + b2_area - inter_area + 1e-16)
+
+    return iou
 
 
 def bbox_iou(box1, box2, x1y1x2y2=True):
@@ -568,7 +614,6 @@ def bbox_iou(box1, box2, x1y1x2y2=True):
     iou = inter_area / (b1_area + b2_area - inter_area + 1e-16)
 
     return iou
-
 
 
 def build_targets(pred_boxes, pred_cls, target, anchors, ignore_thres):
@@ -641,46 +686,13 @@ from torch.autograd import Variable
 import torch.optim as optim
 
 
-def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, input_size, batch_size):
-    model.eval()
-
-    Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
-
-    labels = []
-    sample_metrics = []  # List of tuples (TP, confs, pred)
-    for batch_i, (_, imgs, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
-    # for batch_i, (_, imgs, targets) in enumerate(dataloader):
-    #     print("\t- Evaluating batch #{}".format(batch_i))
-
-        # Extract labels
-        labels += targets[:, 1].tolist()
-        # Rescale target
-        targets[:, 2:] = rel2abs(cxcywh2xyxy(targets[:, 2:]), input_size, input_size)  # From REL [cxcywh] to ABS[xyxy]
-
-        imgs = Variable(imgs.type(Tensor), requires_grad=False)
-
-        with torch.no_grad():
-            detections = model(imgs)
-            detections[..., :4] = cxcywh2xyxy(detections[..., :4])
-            detections = remove_low_conf(detections, conf_thres=conf_thres)
-            detections = keep_max_class(detections)
-            detections = non_max_suppression(detections, nms_thres=nms_thres)
-
-        sample_metrics += get_batch_statistics(detections, targets, iou_threshold=iou_thres)
-
-    # Concatenate sample statistics
-    true_positives, pred_scores, pred_labels = [np.concatenate(x, axis=0) for x in list(zip(*sample_metrics))]
-    precision, recall, AP, f1, ap_class = ap_per_class(true_positives, pred_scores, pred_labels, labels)
-
-    return precision, recall, AP, f1, ap_class
-
-
-def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=None, title=None, colors=None):
+def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=None, title=None, colors=None, t_bboxes=None, t_class_ids=None):
     # Settings
     dpi = 80
     txt_y_offset = 1.0
     img = img2img(img)  # Force casting
-    img_h, img_w, _ = img.shape
+    img_h, img_w = img.shape[:2]
+    t_color = np.array([0.0, 200.0, 0.0, 150.0]) / 255.0
 
     # Bounding-box colors
     if colors is None:
@@ -694,6 +706,8 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
         class_probs = [0.0] * len(bboxes)
     if class_names is None:
         class_names = ['Unknown'] * len(bboxes)
+    if t_class_ids is None:
+        t_class_ids = [None] * len(bboxes) if t_bboxes is None else [None] * len(t_bboxes)
 
     # Config plot
     fig, ax = plt.subplots()
@@ -702,16 +716,30 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
         fig.canvas.set_window_title(title)
     r = fig.canvas.get_renderer()
     plt.tight_layout()
-    ax.imshow(img)
+
+    # Set colormap (if needed)
+    if len(img.shape) == 2:
+        ax.imshow(img, cmap='gray')
+    else:
+        if img.shape[2] == 1:
+            ax.imshow(np.squeeze(img), cmap='gray')
+        else:
+            ax.imshow(img)
+
+    # Draw bounding boxes and labels of ground truth
+    if t_bboxes is not None:
+        for t_bbox, class_id in zip(t_bboxes, t_class_ids):
+            t_x1, t_y1, t_x2, t_y2 = t_bbox
+            t_bbox = patches.Rectangle((t_x1, t_y1), t_x2 - t_x1, t_y2 - t_y1, color=t_color)
+            ax.add_patch(t_bbox)
 
     # Draw bounding boxes and labels of detections
-    for (x1, y1, x2, y2), class_id, class_prob in zip(bboxes, class_ids, class_probs):
-        #print("\t+ Label: %s, Conf: %.5f" % (class_names[int(class_id)], class_prob))
-
+    for p_bbox, class_id, class_prob in zip(bboxes, class_ids, class_probs):
         # Get color
         color = colors[int(class_id) % len(colors)]
 
         # Get box dimensions
+        x1, y1, x2, y2 = p_bbox
         box_w = x2 - x1
         box_h = y2 - y1
 
@@ -744,11 +772,11 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
     # Show image
     if show_results:
         plt.show()
-    plt.close()
+    #plt.close()
 
 
 def process_detections(img, img_detections, input_size, class_names, show_results=True, save_path=False,
-                       title=None, rescale_bboxes=False, colors=None, extension='.jpg'):
+                       title=None, rescale_bboxes=False, colors=None, extension='.jpg', ground_truth=None):
 
     for img_i, detections in zip(img, img_detections):
         # Parse values
@@ -759,6 +787,14 @@ def process_detections(img, img_detections, input_size, class_names, show_result
 
         # Load image
         np_img = img2img(img_i)
+
+        if ground_truth is None:
+            t_bboxes = None
+            t_class_ids = None
+        else:
+            t_class_ids = ground_truth[:, 1].numpy()
+            t_bboxes = ground_truth[:, 2:]
+            t_bboxes = rel2abs(t_bboxes, np_img.shape[0], np_img.shape[1]).numpy()
 
         # Rescale boxes
         if rescale_bboxes:
@@ -771,7 +807,7 @@ def process_detections(img, img_detections, input_size, class_names, show_result
 
         # Plot bbox
         plot_bboxes(np_img, bboxes, class_ids, class_probs, class_names, show_results=show_results,
-                    save_path=save_path_i, title=title, colors=colors)
+                    save_path=save_path_i, title=title, colors=colors, t_bboxes=t_bboxes, t_class_ids=t_class_ids)
 
 
 def in_target2out_target(in_target, out_h, out_w):

@@ -28,6 +28,7 @@ class ListDataset(Dataset):
 
         # Data format
         self.data_format = A.Compose([
+            A.ToGray(p=1.0),
             A.LongestMaxSize(max_size=self.input_size, interpolation=cv2.INTER_AREA),
             A.PadIfNeeded(min_height=self.input_size, min_width=self.input_size, border_mode=cv2.BORDER_CONSTANT,
                           value=(128, 128, 128)),
@@ -76,7 +77,8 @@ class ListDataset(Dataset):
 
         # Default image format
         img_format = self.data_format(image=img, bboxes=bboxes_albu)
-        img = img_format['image']
+        img = img_format['image'][..., 0]  # Remove redundant channels
+        # img = img[..., np.newaxis]  # Add channel dimension
         bboxes_albu = img_format['bboxes']
 
         # Custom transformations
@@ -120,7 +122,7 @@ class ListDataset(Dataset):
         targets[:, 2:] = boxes_xywh_rel
 
         # # [Debug]: Keep class X
-        # targets = targets[targets[:, 1] == 1]
+        # targets = targets[targets[:, 1] == 0]
 
         return img_path, img, targets
 
@@ -163,6 +165,9 @@ class ImageFolder(Dataset):
             self.images.append(os.path.join(images_path, file))
 
     def __getitem__(self, index):
+        # For debugging
+        # print("Index: {}".format(index))
+        # index = 174
         image_path = self.images[index % len(self.images)]
 
         # Load image as RGB
