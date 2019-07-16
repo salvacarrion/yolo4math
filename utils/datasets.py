@@ -16,7 +16,8 @@ from utils.utils import *
 
 
 class ListDataset(Dataset):
-    def __init__(self, images_path, labels_path, input_size, transform=None, multiscale=False, normalized_bboxes=True):
+    def __init__(self, images_path, labels_path, input_size, transform=None, multiscale=False, normalized_bboxes=True,
+                 balance_classes=False, class_names=None):
         self.img_files = []
         self.label_files = []
         self.input_size = input_size
@@ -25,6 +26,8 @@ class ListDataset(Dataset):
         self.multiscale = multiscale
         self.min_input_size = self.input_size - 3 * 32  # Network stride
         self.max_input_size = self.input_size + 3 * 32
+        self.balance_classes = balance_classes
+        self.class_counter = np.zeros(len(class_names))
 
         # Data format
         self.data_format = A.Compose([
@@ -50,14 +53,49 @@ class ListDataset(Dataset):
         # For debugging
         # print("Index: {}".format(index))
         # index = 174
-
+        index = index
         # Get paths
         img_path = self.img_files[index % len(self.img_files)].rstrip()
         label_path = self.label_files[index % len(self.img_files)].rstrip()
 
-        # Load image and bboxes
-        img = np.asarray(Image.open(img_path).convert('RGB'))
+        # Load bboxes
         bboxes = torch.from_numpy(np.loadtxt(label_path).reshape(-1, 5))
+
+        # Remove elements to balance training
+        samples_seen = self.class_counter.sum()
+        if self.balance_classes and samples_seen > 0:
+            class_weight = np.array(self.class_counter, dtype=np.float32)
+            balance_prob = 1.0 / len(self.class_counter)
+            for i in range(len(self.class_counter)):
+                class_weight[i] = self.class_counter[i] / samples_seen
+            class_weight = balance_prob - class_weight  # Needed to balance the classes
+            class_weight = class_weight.clip(min=0)  # Clamp
+            if class_weight.sum() > 0.0:
+                class_weight = class_weight/class_weight.sum()  # Normalize
+            elif class_weight.sum() == 0.0:
+                class_weight = np.ones(len(self.class_counter)) * balance_prob
+            else:
+                asdasd =3
+            kept_indices = []
+            for ci, w in enumerate(class_weight):
+                if w > 0.0:
+                    idxs = (bboxes[:, 0] == ci).nonzero().numpy().flatten()  # Select indices
+                    max_indices = min(int(w*len(idxs)), bboxes.size(0))
+                    np.random.shuffle(idxs)  # Shuffle indices
+                    idxs = idxs[:max_indices]
+                    kept_indices += idxs.tolist()
+
+            # Keep balance indices
+            kept_indices = np.array(kept_indices)
+            np.random.shuffle(kept_indices)
+            bboxes = bboxes[kept_indices]
+
+        # Ignore image if empty boxes
+        if bboxes.size(0) == 0:
+            return img_path, None, None
+
+        # Load image
+        img = np.asarray(Image.open(img_path).convert('RGB'))
 
         # Get input dimensions
         h, w, c = img.shape
@@ -96,7 +134,7 @@ class ListDataset(Dataset):
         # plot_bboxes(img, bboxes_xyxy_abs, title="Augmented ({})".format(img_path))
 
         # Convert (PIL/Numpy) to PyTorch Tensor
-        img = transforms.ToTensor()(img)
+        img = transforms.ToTensor()(Image.fromarray(img))
         img_c, img_h, img_w = img.shape
 
         # Fix bboxes (keep into the region boundaries)
@@ -124,10 +162,19 @@ class ListDataset(Dataset):
         # # [Debug]: Keep class X
         # targets = targets[targets[:, 1] == 0]
 
+        # Update seen classes
+        for c in targets[:, 1]:
+            self.class_counter[int(c)] += 1
+
+        # print(self.class_counter.tolist())
         return img_path, img, targets
 
     def collate_fn(self, batch):
         img_paths, imgs, targets = list(zip(*batch))
+
+        # If empty, leave
+        if targets[0] is None:
+            return None, None, None
 
         # Get targets as a list of tensors
         targets = [boxes for boxes in targets if boxes is not None]
