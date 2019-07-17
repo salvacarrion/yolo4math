@@ -772,7 +772,7 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
     # Show image
     if show_results:
         plt.show()
-    #plt.close()
+    plt.close()
 
 
 def process_detections(img, img_detections, input_size, class_names, show_results=True, save_path=False,
@@ -910,3 +910,39 @@ def format2yolo(targets):
     new_target[:, 2:] = xywh2cxcywh(bboxes_xywh_rel)
     return new_target
 
+
+def balance_batch(labels, class_counter):
+    class_weight = np.array(class_counter, dtype=np.float32)
+    balance_prob = 1.0 / len(class_counter)
+    samples_seen = class_counter.sum()
+
+    # If no samples have been seen, ignore
+    if samples_seen == 0:
+        return np.arange(len(labels))
+
+    # Weight classes
+    for i in range(len(class_counter)):
+        class_weight[i] = class_counter[i] / samples_seen
+    class_weight = balance_prob - class_weight  # Needed to balance the classes
+    class_weight = class_weight.clip(min=0)  # Clamp
+    if class_weight.sum() > 0.0:
+        class_weight = class_weight / class_weight.sum()  # Normalize
+    elif class_weight.sum() == 0.0:
+        class_weight = np.ones(len(class_counter)) * balance_prob
+    else:
+        asdasd = 3
+
+    # Select indices
+    kept_indices = []
+    for ci, w in enumerate(class_weight):
+        if w > 0.0:
+            idxs = (labels == ci).nonzero()[0]  # Select indices
+            max_indices = min(int(w * len(idxs)), len(labels))
+            np.random.shuffle(idxs)  # Shuffle indices
+            idxs = idxs[:max_indices]
+            kept_indices += idxs.tolist()
+
+    # Keep balance indices
+    kept_indices = np.array(kept_indices)
+    np.random.shuffle(kept_indices)
+    return kept_indices

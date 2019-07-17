@@ -28,6 +28,7 @@ class ListDataset(Dataset):
         self.max_input_size = self.input_size + 3 * 32
         self.balance_classes = balance_classes
         self.class_counter = np.zeros(len(class_names))
+        self.ignored, self.total = 0, 0
 
         # Data format
         self.data_format = A.Compose([
@@ -62,36 +63,14 @@ class ListDataset(Dataset):
         bboxes = torch.from_numpy(np.loadtxt(label_path).reshape(-1, 5))
 
         # Remove elements to balance training
-        samples_seen = self.class_counter.sum()
-        if self.balance_classes and samples_seen > 0:
-            class_weight = np.array(self.class_counter, dtype=np.float32)
-            balance_prob = 1.0 / len(self.class_counter)
-            for i in range(len(self.class_counter)):
-                class_weight[i] = self.class_counter[i] / samples_seen
-            class_weight = balance_prob - class_weight  # Needed to balance the classes
-            class_weight = class_weight.clip(min=0)  # Clamp
-            if class_weight.sum() > 0.0:
-                class_weight = class_weight/class_weight.sum()  # Normalize
-            elif class_weight.sum() == 0.0:
-                class_weight = np.ones(len(self.class_counter)) * balance_prob
-            else:
-                asdasd =3
-            kept_indices = []
-            for ci, w in enumerate(class_weight):
-                if w > 0.0:
-                    idxs = (bboxes[:, 0] == ci).nonzero().numpy().flatten()  # Select indices
-                    max_indices = min(int(w*len(idxs)), bboxes.size(0))
-                    np.random.shuffle(idxs)  # Shuffle indices
-                    idxs = idxs[:max_indices]
-                    kept_indices += idxs.tolist()
-
-            # Keep balance indices
-            kept_indices = np.array(kept_indices)
-            np.random.shuffle(kept_indices)
+        if self.balance_classes:
+            kept_indices = balance_batch(bboxes[:, 0].numpy(), self.class_counter)
             bboxes = bboxes[kept_indices]
 
         # Ignore image if empty boxes
         if bboxes.size(0) == 0:
+            self.ignored += 1
+            print("Ignored {}/{}".format(self.ignored, self.total))
             return img_path, None, None
 
         # Load image
@@ -167,6 +146,7 @@ class ListDataset(Dataset):
             self.class_counter[int(c)] += 1
 
         # print(self.class_counter.tolist())
+        self.total += 1
         return img_path, img, targets
 
     def collate_fn(self, batch):

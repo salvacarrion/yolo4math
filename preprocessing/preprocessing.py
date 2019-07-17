@@ -34,13 +34,12 @@ COLORS = np.array([[200, 0, 0, 255], [0, 0, 200, 255]])#np.random.randint(0, 255
 
 def main():
     start_time = time.time()
-    WIDTH, HEIGHT = (1024, 1024)
+    WIDTH, HEIGHT = (1440, 1440)
 
-    load_path_raw = '../datasets/equations/raw'
-    load_path_resized = '../datasets/equations/resized/{}x{}'.format(WIDTH, HEIGHT)
+    load_path_raw = '/home/salvacarrion/Documents/datasets/equations/raw'
 
     load_path = load_path_raw  # load_path_resized
-    save_path = '../datasets/equations/resized/{}x{}-padded'.format(WIDTH, HEIGHT)
+    save_path = "/home/salvacarrion/Documents/datasets/equations/{}".format(HEIGHT)
     JSON_DATASET = load_dataset(load_path + '/train.json')
 
     # Make dir if it doesn't exist
@@ -71,7 +70,7 @@ def main():
         image = cv2.imread(filename)
 
         print("\t- Resizing image...")
-        image, new_coords = letterbox_image(image, (WIDTH, HEIGHT), padding=True)
+        image, new_coords = letterbox_image(image, (WIDTH, HEIGHT), padding=False)
 
         # Stats
         h, w, _ = image.shape

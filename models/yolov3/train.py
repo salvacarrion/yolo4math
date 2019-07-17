@@ -23,19 +23,19 @@ from utils.parse_config import *
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Equations
-    parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
+    parser.add_argument("--epochs", type=int, default=500, help="number of epochs")
     parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--model_def", type=str, default=BASE_PATH+"/config/yolov3-math.cfg", help="path to model definition file")
     parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
-    parser.add_argument("--input_size", type=int, default=1024, help="size of each image dimension")
+    parser.add_argument("--input_size", type=int, default=1440, help="size of each image dimension")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=True, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.1, help="validation split [0..1]")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
     parser.add_argument("--log_name", type=str, default="exp-1", help="name of the experiment (tensorboard)")
-    parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
+    parser.add_argument("--evaluation_interval", type=int, default=-1, help="interval evaluations on validation set")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     parser.add_argument("--multiscale_training", default=True, help="allow for multi-scale training")
     opt = parser.parse_args()
@@ -74,8 +74,7 @@ if __name__ == "__main__":
     ], p=1.0)
 
     # Get dataloader
-    dataset = ListDataset(images_path=images_path, labels_path=labels_path, input_size=opt.input_size,
-                          transform=None, balance_classes=True, class_names=class_names)
+    dataset = ListDataset(images_path=images_path, labels_path=labels_path, input_size=opt.input_size, transform=data_aug, balance_classes=False, class_names=class_names)
 
     # Creating data indices for training and validation splits:
     dataset_size = len(dataset)
@@ -136,110 +135,110 @@ if __name__ == "__main__":
             if targets is None or len(targets) == 0:
                 continue
             batches_done += 1
-        #
-        #     # Format boxes to YOLO format REL(cxcywh)
-        #     targets = format2yolo(targets)
-        #
-        #     # Sanity check I (img_path => only default transformations can be reverted)
-        #     # f_img = img2img(imgs[0])
-        #     # fake_targets = in_target2out_target(targets, out_h=f_img.shape[0], out_w=f_img.shape[1])
-        #     # process_detections([f_img], [fake_targets], opt.input_size, class_names, rescale_bboxes=False, title="Augmented final ({})".format(img_paths[0]), colors=colors)
-        #
-        #     # Inputs/Targets to device
-        #     imgs = Variable(imgs.to(device))
-        #     targets = Variable(targets.to(device), requires_grad=False)
-        #
-        #     # Fit model
-        #     loss, outputs = model(imgs, targets)
-        #     loss.backward()
-        #     running_loss += loss.item()
-        #
-        #     # Sanity check II
-        #     # outputs[..., :4] = cxcywh2xyxy(outputs[..., :4])
-        #     # detections = remove_low_conf(outputs, conf_thres=opt.conf_thres)
-        #     # detections = keep_max_class(detections)
-        #     # detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
-        #     # if detections:
-        #     #     process_detections([f_img], [detections[0]], opt.img_size, class_names, rescale_bboxes=False, title="Detection result", colors=None)
-        #     # else:
-        #     #     print("NO DETECTIONS")
-        #
-        #     if batches_done % opt.gradient_accumulations:
-        #         # Accumulates gradient before each step
-        #         optimizer.step()
-        #         optimizer.zero_grad()
-        #
-        #     # ********* PRINT PROCESS *********
-        #     # Build log and add data to tensorboard
-        #     log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch+1, opt.epochs, batch_i, len(train_loader))
-        #     metric_table = [["Metrics", *["YOLO Layer {}".format(i+1) for i in range(len(model.yolo_layers))]]]
-        #     # Log metrics at each YOLO layer
-        #     for i, metric in enumerate(metrics):
-        #         # Add relevant data
-        #         formats = {m: "%.6f" for m in metrics}
-        #         formats["grid_size"] = "%2d"
-        #         formats["cls_acc"] = "%.2f%%"
-        #         row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
-        #         metric_table += [[metric, *row_metrics]]
-        #     log_str += AsciiTable(metric_table).table
-        #     log_str += "\nTotal loss: {:.5f}".format(loss.item())
-        #
-        #     # Determine approximate time left for epoch
-        #     epoch_batches_left = len(train_loader) - batch_i
-        #     avg_time_minibatch = (time.time() - start_time) / batch_i
-        #     time_left = datetime.timedelta(seconds=epoch_batches_left * avg_time_minibatch)
-        #     log_str += "\nETA: {}".format(time_left)
-        #     print(log_str)
-        #
-        # # ********* LOG PROCESS *********
-        # # [TB] Scalars
-        # for j, yolo in enumerate(model.yolo_layers):
-        #     for name, metric in yolo.metrics.items():
-        #         if name != "grid_size":
-        #             writer.add_scalar(tag="{}_{}".format(name, j + 1), scalar_value=metric, global_step=epoch)
-        # writer.add_scalar(tag="loss", scalar_value=running_loss/len(train_loader), global_step=epoch)
-        #
-        # # [TB] Histogram / one per epoch (takes more time (0.x seconds))
-        # for name, param in model.named_parameters():
-        #     writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch)
-        #
-        # # ********* EVALUATE MODEL *********
-        # if epoch % opt.evaluation_interval == 0:
-        #     print("\n---- Evaluating Model ----")
-        #     try:
-        #         # Evaluate the model on the validation set
-        #         precision, recall, AP, f1, ap_class = evaluate(
-        #             model,
-        #             validation_loader,
-        #             iou_thres=0.5,
-        #             conf_thres=0.5,
-        #             nms_thres=0.5,
-        #             input_size=opt.input_size
-        #         )
-        #
-        #         # Add values to tensorboard
-        #         writer.add_scalar(tag="val_precision", scalar_value=precision.mean(), global_step=epoch)
-        #         writer.add_scalar(tag="val_recall", scalar_value=recall.mean(), global_step=epoch)
-        #         writer.add_scalar(tag="val_mAP", scalar_value=AP.mean(), global_step=epoch)
-        #         writer.add_scalar(tag="val_f1", scalar_value=f1.mean(), global_step=epoch)
-        #
-        #         # Print class APs and mAP
-        #         ap_table = [["Index", "Class name", "AP"]]
-        #         for i, c in enumerate(ap_class):
-        #             ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
-        #         print(AsciiTable(ap_table).table)
-        #         print("mAP: {:.5f}".format(AP.mean()))
-        #
-        #     except Exception as e:
-        #         print("ERROR EVALUATING MODEL!")
-        #         print(e)
-        #
-        # # Save best model
-        # avg_loss = running_loss / len(train_loader)
-        # if avg_loss < best_loss:
-        #     best_loss = avg_loss
-        #     print("Saving best model.... (loss={})".format(best_loss))
-        #     torch.save(model.state_dict(), opt.checkpoint_dir + "/yolov3_best.pth")
+
+            # Format boxes to YOLO format REL(cxcywh)
+            targets = format2yolo(targets)
+
+            # Sanity check I (img_path => only default transformations can be reverted)
+            # f_img = img2img(imgs[0])
+            # fake_targets = in_target2out_target(targets, out_h=f_img.shape[0], out_w=f_img.shape[1])
+            # process_detections([f_img], [fake_targets], opt.input_size, class_names, rescale_bboxes=False, title="Augmented final ({})".format(img_paths[0]), colors=colors)
+
+            # Inputs/Targets to device
+            imgs = Variable(imgs.to(device))
+            targets = Variable(targets.to(device), requires_grad=False)
+
+            # Fit model
+            loss, outputs = model(imgs, targets)
+            loss.backward()
+            running_loss += loss.item()
+
+            # Sanity check II
+            # outputs[..., :4] = cxcywh2xyxy(outputs[..., :4])
+            # detections = remove_low_conf(outputs, conf_thres=opt.conf_thres)
+            # detections = keep_max_class(detections)
+            # detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
+            # if detections:
+            #     process_detections([f_img], [detections[0]], opt.img_size, class_names, rescale_bboxes=False, title="Detection result", colors=None)
+            # else:
+            #     print("NO DETECTIONS")
+
+            if batches_done % opt.gradient_accumulations:
+                # Accumulates gradient before each step
+                optimizer.step()
+                optimizer.zero_grad()
+
+            # ********* PRINT PROCESS *********
+            # Build log and add data to tensorboard
+            log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch+1, opt.epochs, batch_i, len(train_loader))
+            metric_table = [["Metrics", *["YOLO Layer {}".format(i+1) for i in range(len(model.yolo_layers))]]]
+            # Log metrics at each YOLO layer
+            for i, metric in enumerate(metrics):
+                # Add relevant data
+                formats = {m: "%.6f" for m in metrics}
+                formats["grid_size"] = "%2d"
+                formats["cls_acc"] = "%.2f%%"
+                row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
+                metric_table += [[metric, *row_metrics]]
+            log_str += AsciiTable(metric_table).table
+            log_str += "\nTotal loss: {:.5f}".format(loss.item())
+
+            # Determine approximate time left for epoch
+            epoch_batches_left = len(train_loader) - batch_i
+            avg_time_minibatch = (time.time() - start_time) / batch_i
+            time_left = datetime.timedelta(seconds=epoch_batches_left * avg_time_minibatch)
+            log_str += "\nETA: {}".format(time_left)
+            print(log_str)
+
+        # ********* LOG PROCESS *********
+        # [TB] Scalars
+        for j, yolo in enumerate(model.yolo_layers):
+            for name, metric in yolo.metrics.items():
+                if name != "grid_size":
+                    writer.add_scalar(tag="{}_{}".format(name, j + 1), scalar_value=metric, global_step=epoch)
+        writer.add_scalar(tag="loss", scalar_value=running_loss/len(train_loader), global_step=epoch)
+
+        # [TB] Histogram / one per epoch (takes more time (0.x seconds))
+        for name, param in model.named_parameters():
+            writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch)
+
+        # ********* EVALUATE MODEL *********
+        if epoch % opt.evaluation_interval == 0 and opt.evaluation_interval > 0:
+            print("\n---- Evaluating Model ----")
+            try:
+                # Evaluate the model on the validation set
+                precision, recall, AP, f1, ap_class = evaluate(
+                    model,
+                    validation_loader,
+                    iou_thres=0.5,
+                    conf_thres=0.5,
+                    nms_thres=0.5,
+                    input_size=opt.input_size
+                )
+
+                # Add values to tensorboard
+                writer.add_scalar(tag="val_precision", scalar_value=precision.mean(), global_step=epoch)
+                writer.add_scalar(tag="val_recall", scalar_value=recall.mean(), global_step=epoch)
+                writer.add_scalar(tag="val_mAP", scalar_value=AP.mean(), global_step=epoch)
+                writer.add_scalar(tag="val_f1", scalar_value=f1.mean(), global_step=epoch)
+
+                # Print class APs and mAP
+                ap_table = [["Index", "Class name", "AP"]]
+                for i, c in enumerate(ap_class):
+                    ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
+                print(AsciiTable(ap_table).table)
+                print("mAP: {:.5f}".format(AP.mean()))
+
+            except Exception as e:
+                print("ERROR EVALUATING MODEL!")
+                print(e)
+
+        # Save best model
+        avg_loss = running_loss / len(train_loader)
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            print("Saving best model.... (loss={})".format(best_loss))
+            torch.save(model.state_dict(), opt.checkpoint_dir + "/yolov3_best.pth")
 
     # Close writer
     writer.close()
