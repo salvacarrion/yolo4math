@@ -115,11 +115,11 @@ def get_boxes(json):
 
 if __name__ == "__main__":
     # Settings
-    WIDTH, HEIGHT = (1024, 1024)
+    WIDTH, HEIGHT = (1280, 1280)
     K = 10
-    subfolder = "{}x{}".format(WIDTH, HEIGHT)
+    subfolder = str(WIDTH)
     save_path = 'anchors/' + subfolder
-    load_path = 'datasets/equations/resized/' + subfolder
+    load_path = '/home/salvacarrion/Documents/datasets/equations/' + subfolder
 
     # Get box sizes
     JSON_DATASET = load_dataset(load_path + '/train.json')

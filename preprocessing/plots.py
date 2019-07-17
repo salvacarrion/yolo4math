@@ -12,8 +12,8 @@ sns.set()
 
 def plot_clusters():
     # Load cluster IOUs
-    WIDTH, HEIGHT = (1024, 1024)
-    base_path = 'anchors/{}x{}'.format(WIDTH, HEIGHT)
+    WIDTH, HEIGHT = (1024, 1440)
+    base_path = '/home/salvacarrion/Documents/Programming/Python/Projects/yolo4math/anchors/{}'.format(HEIGHT)
     data = load_dataset(base_path + '/cluster_ious.json')
 
     x = []
