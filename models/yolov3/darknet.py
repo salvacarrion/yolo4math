@@ -263,7 +263,7 @@ class Darknet(nn.Module):
         yolo_outputs = to_cpu(torch.cat(yolo_outputs, 1))
         return yolo_outputs if targets is None else (loss, yolo_outputs)
 
-    def load_darknet_weights(self, weights_path, cutoff=None, free_layers=None):
+    def load_darknet_weights(self, weights_path, cutoff=None, freeze_layers=None):
         """Parses and loads the weights stored in 'weights_path'"""
 
         # Open the weights file
@@ -284,7 +284,7 @@ class Darknet(nn.Module):
                 break
 
                 # Freeze layers
-            if free_layers and i <= free_layers:
+            if freeze_layers and i <= freeze_layers:
                 for param in module.parameters():
                     param.requires_grad = False
 
