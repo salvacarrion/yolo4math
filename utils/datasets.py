@@ -118,7 +118,13 @@ class ListDatasetSSD(Dataset):
         # Fix bboxes (keep into the region boundaries)
         bboxes_xyxy_abs = torch.tensor(bboxes_xyxy_abs)
         bboxes_xyxy_abs, kept_indices = fix_bboxes(bboxes_xyxy_abs, img_h, img_w)  # Use new size (padding)
+        bboxes_labels += 1  # Background starts at 0
         bboxes_labels = bboxes_labels[kept_indices]  # Math dimensions
+
+        # Keep embedded/isolated (debugging)
+        kept_indices = bboxes_labels == 2
+        bboxes_labels = bboxes_labels[kept_indices]
+        bboxes_xyxy_abs = bboxes_xyxy_abs[kept_indices]
 
         # Sanity check III
         # plot_bboxes(img, bboxes_xyxy_abs, title="Augmented Fix ({})".format(img_path))
@@ -155,7 +161,7 @@ class ListDatasetSSD(Dataset):
 
         images = torch.stack(images, dim=0)
 
-        return images, boxes, labels  # tensor (N, 3, 300, 300), 3 lists of N tensors each
+        return img_paths, images, boxes, labels  # tensor (N, 3, 300, 300), 3 lists of N tensors each
 
     def __len__(self):
         return len(self.img_files)

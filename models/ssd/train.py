@@ -28,7 +28,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
-    parser.add_argument("--input_size", type=int, default=1024, help="size of each image dimension")
+    parser.add_argument("--input_size", type=int, default=300, help="size of each image dimension")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=True, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.1, help="validation split [0..1]")
@@ -49,6 +49,7 @@ if __name__ == "__main__":
     images_path = data_config["train"].format(opt.input_size)
     labels_path = data_config["labels"]
     class_names = load_classes(data_config["classes"])
+    class_names.insert(0, 'background')
     colors = np.array([[200, 0, 0, 255], [0, 0, 200, 255]], dtype=np.float)/255.0
 
     # Set device
@@ -83,7 +84,6 @@ if __name__ == "__main__":
     model = model.to(device)
     criterion = MultiBoxLoss(priors_cxcy=model.priors_cxcy).to(device)
 
-
     # Data augmentation
     data_aug = A.Compose([
         # Extra
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     ], p=1.0)
 
     # Get dataloader
-    dataset = ListDataset(images_path=images_path, labels_path=labels_path, input_size=opt.input_size, transform=data_aug, balance_classes=False, class_names=class_names)
+    dataset = ListDatasetSSD(images_path=images_path, labels_path=labels_path, input_size=opt.input_size, transform=data_aug, balance_classes=False, class_names=class_names)
 
     # Creating data indices for training and validation splits:
     dataset_size = len(dataset)
@@ -145,12 +145,12 @@ if __name__ == "__main__":
         running_loss = 0
 
         # Train model
-        for batch_i, (img_paths, imgs, targets) in enumerate(train_loader, 1):
+        for batch_i, (img_paths, images, boxes, labels) in enumerate(train_loader, 1):
             # Input target => image_i + class_id + REL(cxcywh)
             # Output target => ABS(cxcywh) + obj_conf + class_prob + class_id
 
             # Ignore empty targets (problems with the data)
-            if targets is None or len(targets) == 0:
+            if boxes is None or len(boxes) == 0:
                 continue
             batches_done += 1
 
@@ -164,12 +164,12 @@ if __name__ == "__main__":
 
             # Inputs/Targets to device
             # Move to default device
-            images = imgs.to(device)  # (batch_size (N), 3, 300, 300)
+            images = images.to(device)  # (batch_size (N), 3, 300, 300)
             boxes = [b.to(device) for b in boxes]
             labels = [l.to(device) for l in labels]
 
             # Forward prop.
-            predicted_locs, predicted_scores = model(imgs)  # (N, 8732, 4), (N, 8732, n_classes)
+            predicted_locs, predicted_scores = model(images)  # (N, 8732, 4), (N, 8732, n_classes)
 
             # Loss
             loss = criterion(predicted_locs, predicted_scores, boxes, labels)  # scalar
