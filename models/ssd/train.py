@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     # Get data configuration
     data_config = parse_data_config(opt.data_config)
-    images_path = data_config["train"].format(opt.input_size)
+    images_path = data_config["train"].format(1024)#opt.input_size
     labels_path = data_config["labels"]
     class_names = load_classes(data_config["classes"])
     class_names.insert(0, 'background')
@@ -144,8 +144,15 @@ if __name__ == "__main__":
         model.train()
         running_loss = 0
 
+        batch_time = AverageMeter()  # forward prop. + back prop. time
+        data_time = AverageMeter()  # data loading time
+        losses = AverageMeter()  # loss
+
+        start = time.time()
+
         # Train model
         for batch_i, (img_paths, images, boxes, labels) in enumerate(train_loader, 1):
+            data_time.update(time.time() - start)
             # Input target => image_i + class_id + REL(cxcywh)
             # Output target => ABS(cxcywh) + obj_conf + class_prob + class_id
 
@@ -182,7 +189,17 @@ if __name__ == "__main__":
             # Update model
             optimizer.step()
 
+            losses.update(loss.item(), images.size(0))
+            batch_time.update(time.time() - start)
 
+            start = time.time()
+
+            print('Epoch: [{0}][{1}/{2}]\t'
+                  'Batch Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Data Time {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(epoch, batch_i, len(train_loader),
+                                                                  batch_time=batch_time,
+                                                                  data_time=data_time, loss=losses))
 
             # Sanity check II
             # outputs[..., :4] = cxcywh2xyxy(outputs[..., :4])

@@ -93,7 +93,7 @@ class ListDatasetSSD(Dataset):
 
         # Default image format
         img_format = self.data_format(image=img, bboxes=bboxes_albu)
-        img = img_format['image'][..., 0]  # Remove redundant channels
+        img = img_format['image']#[..., 0]  # Remove redundant channels
         # img = img[..., np.newaxis]  # Add channel dimension
         bboxes_albu = img_format['bboxes']
 
