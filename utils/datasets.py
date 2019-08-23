@@ -122,7 +122,7 @@ class ListDatasetSSD(Dataset):
         bboxes_labels = bboxes_labels[kept_indices]  # Math dimensions
 
         # Keep embedded/isolated (debugging)
-        kept_indices = bboxes_labels == 2
+        kept_indices = torch.ByteTensor(bboxes_labels == 2)
         bboxes_labels = bboxes_labels[kept_indices]
         bboxes_xyxy_abs = bboxes_xyxy_abs[kept_indices]
 
@@ -134,7 +134,7 @@ class ListDatasetSSD(Dataset):
 
         # print(self.class_counter.tolist())
         self.total += 1
-        return img_path, img, boxes_xyxy_rel, bboxes_labels
+        return img_path, img, boxes_xyxy_rel, bboxes_labels.type(torch.int64)
 
     def collate_fn(self, batch):
         """
