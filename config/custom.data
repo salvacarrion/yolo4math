@@ -1,4 +1,4 @@
 train=/home/salvacarrion/Documents/datasets/equations/{}
-test=/home/salvacarrion/Documents/datasets/equations/test
+test=/home/salvacarrion/Documents/datasets/equations/{}
 labels=/home/salvacarrion/Documents/datasets/equations/labels
 classes=/home/salvacarrion/Documents/datasets/equations/class.names
