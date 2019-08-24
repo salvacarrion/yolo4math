@@ -572,36 +572,36 @@ class MultiBoxLoss(nn.Module):
         for i in range(batch_size):
             n_objects = boxes[i].size(0)
 
-            overlap = find_jaccard_overlap(boxes[i],
-                                           self.priors_xy)  # (n_objects, 8732)
+            if n_objects:
+                overlap = find_jaccard_overlap(boxes[i], self.priors_xy)  # (n_objects, 8732)
 
-            # For each prior, find the object that has the maximum overlap
-            overlap_for_each_prior, object_for_each_prior = overlap.max(dim=0)  # (8732)
+                # For each prior, find the object that has the maximum overlap
+                overlap_for_each_prior, object_for_each_prior = overlap.max(dim=0)  # (8732)
 
-            # We don't want a situation where an object is not represented in our positive (non-background) priors -
-            # 1. An object might not be the best object for all priors, and is therefore not in object_for_each_prior.
-            # 2. All priors with the object may be assigned as background based on the threshold (0.5).
+                # We don't want a situation where an object is not represented in our positive (non-background) priors -
+                # 1. An object might not be the best object for all priors, and is therefore not in object_for_each_prior.
+                # 2. All priors with the object may be assigned as background based on the threshold (0.5).
 
-            # To remedy this -
-            # First, find the prior that has the maximum overlap for each object.
-            _, prior_for_each_object = overlap.max(dim=1)  # (N_o)
+                # To remedy this -
+                # First, find the prior that has the maximum overlap for each object.
+                _, prior_for_each_object = overlap.max(dim=1)  # (N_o)
 
-            # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
-            object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(device)
+                # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
+                object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(device)
 
-            # To ensure these priors qualify, artificially give them an overlap of greater than 0.5. (This fixes 2.)
-            overlap_for_each_prior[prior_for_each_object] = 1.
+                # To ensure these priors qualify, artificially give them an overlap of greater than 0.5. (This fixes 2.)
+                overlap_for_each_prior[prior_for_each_object] = 1.
 
-            # Labels for each prior
-            label_for_each_prior = labels[i][object_for_each_prior]  # (8732)
-            # Set priors whose overlaps with objects are less than the threshold to be background (no object)
-            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0  # (8732)
+                # Labels for each prior
+                label_for_each_prior = labels[i][object_for_each_prior]  # (8732)
+                # Set priors whose overlaps with objects are less than the threshold to be background (no object)
+                label_for_each_prior[overlap_for_each_prior < self.threshold] = 0  # (8732)
 
-            # Store
-            true_classes[i] = label_for_each_prior
+                # Store
+                true_classes[i] = label_for_each_prior
 
-            # Encode center-size object coordinates into the form we regressed predicted boxes to
-            true_locs[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)  # (8732, 4)
+                # Encode center-size object coordinates into the form we regressed predicted boxes to
+                true_locs[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)  # (8732, 4)
 
         # Identify priors that are positive (object/non-background)
         positive_priors = true_classes != 0  # (N, 8732)
