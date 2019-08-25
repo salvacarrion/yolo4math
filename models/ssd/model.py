@@ -645,5 +645,10 @@ class MultiBoxLoss(nn.Module):
         conf_loss = (conf_loss_hard_neg.sum() + conf_loss_pos.sum()) / n_positives.sum().float()  # (), scalar
 
         # TOTAL LOSS
-
-        return conf_loss + self.alpha * loc_loss
+        total_loss = conf_loss + self.alpha * loc_loss
+        metrics = {
+            'total_loss': total_loss,
+            'conf_loss': conf_loss,
+            'loc_loss': loc_loss
+        }
+        return total_loss, metrics

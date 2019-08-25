@@ -14,9 +14,10 @@ import torchvision.transforms as transforms
 
 from utils.utils import *
 
+
 class ListDatasetSSD(Dataset):
     def __init__(self, images_path, labels_path, input_size, transform=None, multiscale=False, normalized_bboxes=True,
-                 balance_classes=False, class_names=None):
+                 balance_classes=False, class_names=None, single_channel=True):
         self.img_files = []
         self.label_files = []
         self.input_size = input_size
@@ -28,6 +29,7 @@ class ListDatasetSSD(Dataset):
         self.balance_classes = balance_classes
         self.class_counter = np.zeros(len(class_names))
         self.ignored, self.total = 0, 0
+        self.single_channel = single_channel
 
         # Data format
         self.data_format = A.Compose([
@@ -93,7 +95,7 @@ class ListDatasetSSD(Dataset):
 
         # Default image format
         img_format = self.data_format(image=img, bboxes=bboxes_albu)
-        img = img_format['image']#[..., 0]  # Remove redundant channels
+        img = img_format['image'][..., 0] if self.single_channel else img_format['image']  # 1 vs. 3 channels
         # img = img[..., np.newaxis]  # Add channel dimension
         bboxes_albu = img_format['bboxes']
 
@@ -154,12 +156,14 @@ class ListDatasetSSD(Dataset):
         labels = list()
 
         for b in batch:
+            if len(b[2]) == 0:  # Skip images without bounding boxes
+                continue
             img_paths.append(b[0])
             images.append(b[1])
             boxes.append(b[2])
             labels.append(b[3])
 
-        images = torch.stack(images, dim=0)
+        images = torch.stack(images, dim=0) if images else images
 
         return img_paths, images, boxes, labels  # tensor (N, 3, 300, 300), 3 lists of N tensors each
 
@@ -169,7 +173,7 @@ class ListDatasetSSD(Dataset):
 
 class ListDataset(Dataset):
     def __init__(self, images_path, labels_path, input_size, transform=None, multiscale=False, normalized_bboxes=True,
-                 balance_classes=False, class_names=None):
+                 balance_classes=False, class_names=None, single_channel=True):
         self.img_files = []
         self.label_files = []
         self.input_size = input_size
@@ -181,6 +185,7 @@ class ListDataset(Dataset):
         self.balance_classes = balance_classes
         self.class_counter = np.zeros(len(class_names))
         self.ignored, self.total = 0, 0
+        self.single_channel = single_channel
 
         # Data format
         self.data_format = A.Compose([
@@ -246,7 +251,7 @@ class ListDataset(Dataset):
 
         # Default image format
         img_format = self.data_format(image=img, bboxes=bboxes_albu)
-        img = img_format['image'][..., 0]  # Remove redundant channels
+        img = img_format['image'][..., 0] if self.single_channel else img_format['image']  # 1 vs. 3 channels
         # img = img[..., np.newaxis]  # Add channel dimension
         bboxes_albu = img_format['bboxes']
 

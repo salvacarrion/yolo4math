@@ -260,7 +260,7 @@ def set_voc_format(prediction):
 def keep_max_class(image_predictions):
     """
     Creates a list of new tensors that contain the dimensions of the bbox, the object confidence and the
-    maximum class proability with its index.
+    maximum class probality with its index.
     """
     max_class_predictions = []
     for i, hypothesis in enumerate(image_predictions):
@@ -527,7 +527,9 @@ def get_true_positives(outputs, targets, iou_threshold):
                 if iou >= iou_threshold and box_index not in detected_boxes:
                     true_positives[pred_i] = 1
                     detected_boxes += [box_index]
-        batch_metrics.append([true_positives, pred_scores, pred_labels])
+        batch_metrics.append([true_positives,
+                              pred_scores.cpu().data.numpy(),
+                              pred_labels.cpu().data.numpy()])
     return batch_metrics
 
 
@@ -686,7 +688,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 
 
-def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=None, title=None, colors=None, t_bboxes=None, t_class_ids=None):
+def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=None, title=None, colors=None, t_bboxes=None, t_class_ids=None, coords_rel=False):
     # Settings
     dpi = 80
     txt_y_offset = 1.0
@@ -725,6 +727,20 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
             ax.imshow(np.squeeze(img), cmap='gray')
         else:
             ax.imshow(img)
+
+    # Coordinates from relative to absolute
+    if coords_rel:
+        if bboxes is not None:
+            bboxes[:, 0] *= img_w
+            bboxes[:, 1] *= img_h
+            bboxes[:, 2] *= img_w
+            bboxes[:, 3] *= img_h
+
+        if t_bboxes is not None:
+            t_bboxes[:, 0] *= img_w
+            t_bboxes[:, 1] *= img_h
+            t_bboxes[:, 2] *= img_w
+            t_bboxes[:, 3] *= img_h
 
     # Draw bounding boxes and labels of ground truth
     if t_bboxes is not None:

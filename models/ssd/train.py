@@ -2,6 +2,7 @@ import time
 import datetime
 import os
 import sys
+import math
 
 BASE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, BASE_PATH)
@@ -34,7 +35,7 @@ if __name__ == "__main__":
     parser.add_argument("--validation_split", type=float, default=0.1, help="validation split [0..1]")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
-    parser.add_argument("--log_name", type=str, default="YOLOv3", help="name of the experiment (tensorboard)")
+    parser.add_argument("--log_name", type=str, default="SSD-300", help="name of the experiment (tensorboard)")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     opt = parser.parse_args()
@@ -114,20 +115,8 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     metrics = [
-        "grid_size",
-        "loss",
-        "x",
-        "y",
-        "w",
-        "h",
-        "conf",
-        "cls",
-        "cls_acc",
-        "recall50",
-        "recall75",
-        "precision",
-        "conf_obj",
-        "conf_noobj",
+        "conf_loss",
+        "loc_loss",
     ]
 
     # Writer will output to ./runs/ directory by default
@@ -143,31 +132,26 @@ if __name__ == "__main__":
         start_time = time.time()
         model.train()
         running_loss = 0
-
-        batch_time = AverageMeter()  # forward prop. + back prop. time
-        data_time = AverageMeter()  # data loading time
-        losses = AverageMeter()  # loss
-
-        start = time.time()
+        running_conf_loss = 0
+        running_loc_loss = 0
 
         # Train model
+        epoch_batches_done = 0
+
         for batch_i, (img_paths, images, boxes, labels) in enumerate(train_loader, 1):
-            data_time.update(time.time() - start)
-            # Input target => image_i + class_id + REL(cxcywh)
-            # Output target => ABS(cxcywh) + obj_conf + class_prob + class_id
 
             # Ignore empty targets (problems with the data)
             if boxes is None or len(boxes) == 0:
+                # print("Skipping image #{}...".format(batch_i))
                 continue
             batches_done += 1
+            epoch_batches_done += 1
 
-            # Format boxes to YOLO format REL(cxcywh)
-            #targets = format2yolo(targets)
 
             # Sanity check I (img_path => only default transformations can be reverted)
-            # f_img = img2img(imgs[0])
-            # fake_targets = in_target2out_target(targets, out_h=f_img.shape[0], out_w=f_img.shape[1])
-            # process_detections([f_img], [fake_targets], opt.input_size, class_names, rescale_bboxes=False, title="Augmented final ({})".format(img_paths[0]), colors=colors)
+            # pl_bboxes = boxes[0].data.numpy()
+            # plot_bboxes(images[0], pl_bboxes, labels[0].data.numpy(), [1.0] * len(pl_bboxes), class_names,
+            #             title="Augmented final ({})".format(img_paths[0]), colors=colors, coords_rel=True)
 
             # Inputs/Targets to device
             # Move to default device
@@ -179,78 +163,53 @@ if __name__ == "__main__":
             predicted_locs, predicted_scores = model(images)  # (N, 8732, 4), (N, 8732, n_classes)
 
             # Loss
-            loss = criterion(predicted_locs, predicted_scores, boxes, labels)  # scalar
-            running_loss += loss.item()
-
-            # Backward prop.
-            optimizer.zero_grad()
+            loss, l_metrics = criterion(predicted_locs, predicted_scores, boxes, labels)  # scalar
             loss.backward()
 
-            # Update model
-            optimizer.step()
+            # Track losses
+            running_loss += loss.item()
+            running_conf_loss += l_metrics['conf_loss'].item()
+            running_loc_loss += l_metrics['loc_loss'].item()
 
-            losses.update(loss.item(), images.size(0))
-            batch_time.update(time.time() - start)
+            if batches_done % opt.gradient_accumulations == 0:  # Starts at 1: when mod==0 => reset
+                # Accumulates gradient before each step
+                optimizer.step()
+                optimizer.zero_grad()
 
-            start = time.time()
+            # ********* PRINT PROCESS *********
+            # Build log and add data to tensorboard
+            log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch+1, opt.epochs, batch_i, len(train_loader))
+            metric_table = [["Metric", 'Value']]
+            # Log metrics
+            for i, metric in enumerate(metrics):
+                # Add relevant data
+                metric_table += [[metric, "%.6f" % l_metrics[metric]]]
+            log_str += AsciiTable(metric_table).table
+            log_str += "\nTotal loss: {:.5f}".format(loss.item())
 
-            print('Epoch: [{0}][{1}/{2}]\t'
-                  'Batch Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Data Time {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(epoch, batch_i, len(train_loader),
-                                                                  batch_time=batch_time,
-                                                                  data_time=data_time, loss=losses))
+            # Determine approximate time left for epoch
+            epoch_batches_left = len(train_loader) - batch_i
+            avg_time_minibatch = (time.time() - start_time) / batch_i
+            time_left = datetime.timedelta(seconds=epoch_batches_left * avg_time_minibatch)
+            log_str += "\nETA: {}".format(time_left)
+            print(log_str)
 
-            # Sanity check II
-            # outputs[..., :4] = cxcywh2xyxy(outputs[..., :4])
-            # detections = remove_low_conf(outputs, conf_thres=opt.conf_thres)
-            # detections = keep_max_class(detections)
-            # detections = non_max_suppression(detections, nms_thres=opt.nms_thres)
-            # if detections:
-            #     process_detections([f_img], [detections[0]], opt.img_size, class_names, rescale_bboxes=False, title="Detection result", colors=None)
-            # else:
-            #     print("NO DETECTIONS")
-        #     if batches_done % opt.gradient_accumulations == 0:  # Starts at 1: when mod==0 => reset
-        #         # Accumulates gradient before each step
-        #         optimizer.step()
-        #         optimizer.zero_grad()
-        #
-        #     # ********* PRINT PROCESS *********
-        #     # Build log and add data to tensorboard
-        #     log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch+1, opt.epochs, batch_i, len(train_loader))
-        #     metric_table = [["Metrics", *["YOLO Layer {}".format(i+1) for i in range(len(model.yolo_layers))]]]
-        #     # Log metrics at each YOLO layer
-        #     for i, metric in enumerate(metrics):
-        #         # Add relevant data
-        #         formats = {m: "%.6f" for m in metrics}
-        #         formats["grid_size"] = "%2d"
-        #         formats["cls_acc"] = "%.2f%%"
-        #         row_metrics = [formats[metric] % yolo.metrics.get(metric, 0) for yolo in model.yolo_layers]
-        #         metric_table += [[metric, *row_metrics]]
-        #     log_str += AsciiTable(metric_table).table
-        #     log_str += "\nTotal loss: {:.5f}".format(loss.item())
-        #
-        #     # Determine approximate time left for epoch
-        #     epoch_batches_left = len(train_loader) - batch_i
-        #     avg_time_minibatch = (time.time() - start_time) / batch_i
-        #     time_left = datetime.timedelta(seconds=epoch_batches_left * avg_time_minibatch)
-        #     log_str += "\nETA: {}".format(time_left)
-        #     print(log_str)
-        #
-        # # ********* AUX VARS *********
-        # train_loss = running_loss / len(train_loader)
-        #
+        # ********* AUX VARS *********
+        train_loss = running_loss / epoch_batches_done
+        train_conf_loss = running_conf_loss / epoch_batches_done
+        train_loc_loss = running_loc_loss / epoch_batches_done
+
+
         # # ********* LOG PROCESS *********
         # # [TB] Scalars
-        # for j, yolo in enumerate(model.yolo_layers):
-        #     for name, metric in yolo.metrics.items():
-        #         if name != "grid_size":
-        #             writer.add_scalar(tag="{}_{}".format(name, j + 1), scalar_value=metric, global_step=epoch)
         # writer.add_scalar(tag="loss", scalar_value=train_loss, global_step=epoch)
+        # writer.add_scalar(tag="conf_loss", scalar_value=train_conf_loss, global_step=epoch)
+        # writer.add_scalar(tag="loc_loss", scalar_value=train_loc_loss, global_step=epoch)
         #
         # # [TB] Histogram / one per epoch (takes more time (0.x seconds))
         # for name, param in model.named_parameters():
         #     writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch)
+        #
         #
         # # ********* EVALUATE MODEL *********
         # if (epoch+1) % opt.evaluation_interval == 0:
@@ -289,12 +248,12 @@ if __name__ == "__main__":
         #     # except Exception as e:
         #     #     print("ERROR EVALUATING MODEL!")
         #     #     print(e)
-        #
-        # # Save best model
-        # if train_loss < best_loss:
-        #     best_loss = train_loss
-        #     print("Saving best model.... (loss={})".format(best_loss))
-        #     torch.save(model.state_dict(), opt.checkpoint_dir + "/yolov3_best.pth")
+
+        # Save best model
+        if train_loss < best_loss:
+            best_loss = train_loss
+            print("Saving best model.... (loss={})".format(best_loss))
+            torch.save(model, opt.checkpoint_dir + "/ssd_best.pth")
 
     # Close writer
     writer.close()
