@@ -97,8 +97,6 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, input_size, cl
         # Concatenate sample statistics
         sample_metrics += get_true_positives(detections, targets, iou_threshold=iou_thres)
 
-        if batch_i > 10:
-            break
 
     # Compute metrics
     true_positives, pred_scores, pred_labels = [np.concatenate(x, 0) for x in list(zip(*sample_metrics))]
@@ -125,6 +123,7 @@ if __name__ == "__main__":
     parser.add_argument("--iou_thres", type=float, default=0.5, help="iou threshold required to qualify as detected")
     parser.add_argument("--conf_thres", type=float, default=0.5, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
+    parser.add_argument("--top_k", type=int, default=200, help="Keep top K best hypothesis")
     parser.add_argument("--plot_detections", type=int, default=50, help="Number of detections to plot and save")
     opt = parser.parse_args()
     print(opt)

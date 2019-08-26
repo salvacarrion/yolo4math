@@ -20,13 +20,14 @@ import torch.optim as optim
 from terminaltables import AsciiTable
 
 from models.ssd.model import SSD300
+from models.ssd.utils import calculate_mAP
 
 from utils.utils import *
 from utils.datasets import *
 from utils.parse_config import *
 
 
-def evaluate_raw(model, images_path, labels_path, iou_thres, conf_thres, nms_thres, input_size, batch_size, class_names=None,  plot_detections=None):
+def evaluate_raw(model, images_path, labels_path, iou_thres, conf_thres, nms_thres, input_size, top_k, batch_size, class_names=None,  plot_detections=None):
     # Get dataloader
     dataset = ListDataset(images_path=images_path, labels_path=labels_path, input_size=input_size,
                           class_names=class_names, single_channel=False)
@@ -34,86 +35,79 @@ def evaluate_raw(model, images_path, labels_path, iou_thres, conf_thres, nms_thr
         dataset, batch_size=batch_size, shuffle=False, num_workers=1, collate_fn=dataset.collate_fn
     )
 
-    return evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, input_size, class_names, plot_detections)
+    return evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, input_size, top_k, class_names, plot_detections)
 
 
-def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, input_size, class_names=None, plot_detections=None):
+def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, input_size, top_k, class_names=None, plot_detections=None):
     model.eval()
-    running_loss = 0
 
-    Tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
+    # Lists to store detected and true boxes, labels, scores
+    det_boxes = list()
+    det_labels = list()
+    det_scores = list()
+    true_boxes = list()
+    true_labels = list()
+    true_difficulties = list()
 
-    labels = []
-    sample_metrics = []  # List of tuples (TP, confs, pred)
-    for batch_i, (images_path, input_imgs, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects"), 1):
-        # Forward prop.
-        images = input_imgs.to(device)
-        predicted_locs, predicted_scores = model(images)
+    with torch.no_grad():
+        for batch_i, (img_paths, images, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects"), 1):
+
+            # Forward prop.
+            images = images.to(device)
+            predicted_locs, predicted_scores = model(images)
+
+             # Detect objects in SSD output
+            det_boxes_batch, det_labels_batch, det_scores_batch = model.detect_objects(
+                predicted_locs, predicted_scores, min_score=conf_thres, max_overlap=nms_thres, top_k=top_k)
+
+            # Get boxes
+            class_ids = det_labels_batch[0].cpu()
+            p_bboxes = det_boxes_batch[0].cpu()
+            t_bboxes = xywh2xyxy(targets[targets[:, 0] == 0][:, 2:].cpu())
 
 
-        # Detect objects in SSD output
-        det_boxes, det_labels, det_scores = model.detect_objects(predicted_locs, predicted_scores, min_score=0.2,
-                                                                 max_overlap=0.5, top_k=200)
+            # Compute stats
+            det_boxes.extend(det_boxes_batch)
+            det_labels.extend(det_labels_batch)
+            det_scores.extend(det_scores_batch)
+            true_boxes.extend([t_bboxes])
+            true_labels.extend([class_ids])
+            true_difficulties.extend([torch.zeros(1) for i in range(len(t_bboxes))])
 
-        # YOLO format
-        n = len(det_labels[0])
-        p_bboxes = rel2abs(det_boxes[0], input_size, input_size)
-        class_ids = det_labels[0].unsqueeze(0).cpu() - 1
-        aux = torch.cat([torch.ones((1, n,)).type(Tensor), torch.ones((1, n,)).type(Tensor), class_ids.type(Tensor)])
-        detections = torch.cat([p_bboxes.type(Tensor), aux.t()], 1).unsqueeze(0)
-        targets = targets.type(Tensor)
+            # Show detections
+            if plot_detections and batch_i <= plot_detections:
+                if det_boxes:
+                    use_original = False
+                    save_path = BASE_PATH + '/outputs/{}'.format(img_paths[0].split('/')[-1])
+                    save_path=None
 
+                    # Scale target bboxes
+                    input_img = img2img(images[0])
+                    ori_img = img2img(img_paths[0])
 
-        # Targets (here, already formated due to the dataloader)
-        targets[:, 2:] = xywh2xyxy(rel2abs(targets[:, 2:], input_size, input_size))
+                    p_bboxes = rel2abs(p_bboxes, input_size, input_size)
+                    t_bboxes = rel2abs(t_bboxes, input_size, input_size)
 
-        # Show detections
-        if plot_detections and batch_i <= plot_detections:
-            if det_boxes:
-                use_original = True
-                save_path = BASE_PATH + '/outputs/{}'.format(images_path[0].split('/')[-1])
-                save_path=None
-
-                # Scale target bboxes
-                input_img = img2img(input_imgs[0])
-                ori_img = img2img(images_path[0])
-
-                # Output
-                class_ids = detections[0][:, -1]
-                p_bboxes = detections[0][:, :4]
-                t_bboxes = targets[targets[:, 0] == 0][:, 2:]
-
-                if use_original:
-                    p_bboxes = rescale_boxes(p_bboxes, current_shape=input_img.shape[:2],
-                                             original_shape=ori_img.shape[:2])
-                    t_bboxes = rescale_boxes(t_bboxes, current_shape=input_img.shape[:2],
-                                             original_shape=ori_img.shape[:2])
-                    plot_bboxes(ori_img, p_bboxes, class_ids=class_ids, class_names=class_names, show_results=True,
-                                t_bboxes=t_bboxes, title="Detection + ground truth ({})".format(images_path[0]),
-                                save_path=save_path)
+                    if use_original:
+                        p_bboxes = rescale_boxes(p_bboxes, current_shape=input_img.shape[:2],
+                                                 original_shape=ori_img.shape[:2])
+                        t_bboxes = rescale_boxes(t_bboxes, current_shape=input_img.shape[:2],
+                                                 original_shape=ori_img.shape[:2])
+                        plot_bboxes(ori_img, p_bboxes, class_ids=class_ids, class_names=class_names, show_results=True,
+                                    t_bboxes=t_bboxes, title="Detection + ground truth ({})".format(img_paths[0]),
+                                    save_path=save_path)
+                    else:
+                        plot_bboxes(input_img, p_bboxes, class_ids=class_ids, class_names=class_names, show_results=True,
+                                    t_bboxes=t_bboxes, title="Detection + ground truth ({})".format(img_paths[0]),
+                                    save_path=save_path)
                 else:
-                    plot_bboxes(input_img, p_bboxes, class_ids=class_ids, class_names=class_names, show_results=True,
-                                t_bboxes=t_bboxes, title="Detection + ground truth ({})".format(images_path[0]),
-                                save_path=save_path)
-            else:
-                print("NO DETECTIONS")
+                    print("NO DETECTIONS")
 
-        # # Concatenate sample statistics
-        true_pos = get_true_positives(detections, targets, iou_threshold=iou_thres)
-        sample_metrics += true_pos
 
-        if batch_i > 10:
-            break
+    # Calculate mAP
+    APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties)
 
-    # Compute metrics
-    true_positives, pred_scores, pred_labels = [np.concatenate(x, 0) for x in list(zip(*sample_metrics))]
-
-    precision, recall, AP, f1, ap_class = ap_per_class(true_positives, pred_scores, pred_labels, labels)
-
-    # Compute loss
-    val_loss = running_loss / len(dataloader)
-
-    return precision, recall, AP, f1, ap_class, val_loss
+    return precision, recall, AP, f1, ap_class, 0
 
 
 if __name__ == "__main__":
@@ -127,7 +121,10 @@ if __name__ == "__main__":
     parser.add_argument("--shuffle_dataset", type=int, default=False, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.0, help="validation split [0..1]")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
+    parser.add_argument("--iou_thres", type=float, default=0.5, help="iou threshold required to qualify as detected")
+    parser.add_argument("--conf_thres", type=float, default=0.5, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
+    parser.add_argument("--top_k", type=int, default=200, help="Keep top K best hypothesis")
     parser.add_argument("--plot_detections", type=int, default=None, help="Number of detections to plot and save")
     opt = parser.parse_args()
     print(opt)
@@ -166,10 +163,11 @@ if __name__ == "__main__":
                     model,
                     images_path=test_path,
                     labels_path=labels_path,
-                    iou_thres=iou_thres,
-                    conf_thres=conf_thres,
+                    iou_thres=opt.iou_thres,
+                    conf_thres=opt.conf_thres,
                     nms_thres=nms_thres,
                     input_size=opt.input_size,
+                    top_k=opt.top_k,
                     batch_size=opt.batch_size,
                     class_names=class_names,
                     plot_detections=opt.plot_detections

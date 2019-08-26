@@ -17,6 +17,7 @@ from terminaltables import AsciiTable
 from models.ssd.model import SSD300, MultiBoxLoss
 # from models.ssd.datasets import PascalVOCDataset
 from models.ssd.utils import *
+from models.ssd.test import evaluate
 
 from utils.datasets import *
 from utils.parse_config import *
@@ -29,13 +30,13 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
-    parser.add_argument("--input_size", type=int, default=300, help="size of each image dimension")
+    parser.add_argument("--input_size", type=int, default=1024, help="size of each image dimension")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=True, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.1, help="validation split [0..1]")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
-    parser.add_argument("--log_name", type=str, default="SSD-300", help="name of the experiment (tensorboard)")
+    parser.add_argument("--log_name", type=str, default="SSD-1024", help="name of the experiment (tensorboard)")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     opt = parser.parse_args()
@@ -59,7 +60,7 @@ if __name__ == "__main__":
 
     # Initialize model or load checkpoint
     if not opt.weights_path:
-        model = SSD300(n_classes=len(class_names))
+        model = SSD300(n_classes=len(class_names), input_size=opt.input_size)
         # Initialize the optimizer, with twice the default learning rate for biases, as in the original Caffe repo
         biases = list()
         not_biases = list()
@@ -93,7 +94,8 @@ if __name__ == "__main__":
     ], p=1.0)
 
     # Get dataloader
-    dataset = ListDatasetSSD(images_path=images_path, labels_path=labels_path, input_size=opt.input_size, transform=data_aug, balance_classes=False, class_names=class_names)
+    dataset = ListDatasetSSD(images_path=images_path, labels_path=labels_path, input_size=opt.input_size,
+                             transform=data_aug, balance_classes=False, class_names=class_names, single_channel=False)
 
     # Creating data indices for training and validation splits:
     dataset_size = len(dataset)
@@ -137,6 +139,48 @@ if __name__ == "__main__":
 
         # Train model
         epoch_batches_done = 0
+        #
+        # # ********* EVALUATE MODEL *********
+        # if (epoch + 1) % opt.evaluation_interval == 0:
+        #     print("\n---- Evaluating Model ----")
+        #     # try:
+        #     # Evaluate the model on the validation set
+        #     precision, recall, AP, f1, ap_class, val_loss = evaluate(
+        #         model,
+        #         validation_loader,
+        #         iou_thres=0.5,
+        #         conf_thres=0.5,
+        #         nms_thres=0.5,
+        #         input_size=opt.input_size,
+        #         top_k=200,
+        #     )
+        #
+        #     # Add values to tensorboard
+        #     writer.add_scalar(tag="val_precision", scalar_value=precision.mean(), global_step=epoch + 1)
+        #     writer.add_scalar(tag="val_recall", scalar_value=recall.mean(), global_step=epoch + 1)
+        #     writer.add_scalar(tag="val_mAP", scalar_value=AP.mean(), global_step=epoch + 1)
+        #     writer.add_scalar(tag="val_f1", scalar_value=f1.mean(), global_step=epoch + 1)
+        #     writer.add_scalar(tag="val_loss", scalar_value=val_loss, global_step=epoch + 1)
+        #     writer.add_scalar(tag="train_val_loss_divergence", scalar_value=val_loss - train_loss,
+        #                       global_step=epoch + 1)
+        #
+        #     # Print class APs and mAP
+        #     ap_table = [["Index", "Class name", "AP"]]
+        #     for i, c in enumerate(ap_class):
+        #         ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
+        #     print(AsciiTable(ap_table).table)
+        #     print("val_precision: {:.5f}".format(precision.mean()))
+        #     print("val_recall: {:.5f}".format(recall.mean()))
+        #     print("val_mAP: {:.5f}".format(AP.mean()))
+        #     print("val_f1: {:.5f}".format(f1.mean()))
+        #     print("val_loss: {:.5f}".format(val_loss))
+        #     print("train_val_loss_divergence: {:.5f}".format(val_loss - train_loss))
+        #
+        #     # except Exception as e:
+        #     #     print("ERROR EVALUATING MODEL!")
+        #     #     print(e)
+
+
 
         for batch_i, (img_paths, images, boxes, labels) in enumerate(train_loader, 1):
 
@@ -199,55 +243,16 @@ if __name__ == "__main__":
         train_conf_loss = running_conf_loss / epoch_batches_done
         train_loc_loss = running_loc_loss / epoch_batches_done
 
+        # ********* LOG PROCESS *********
+        # [TB] Scalars
+        writer.add_scalar(tag="loss", scalar_value=train_loss, global_step=epoch+1)
+        writer.add_scalar(tag="conf_loss", scalar_value=train_conf_loss, global_step=epoch+1)
+        writer.add_scalar(tag="loc_loss", scalar_value=train_loc_loss, global_step=epoch+1)
 
-        # # ********* LOG PROCESS *********
-        # # [TB] Scalars
-        # writer.add_scalar(tag="loss", scalar_value=train_loss, global_step=epoch)
-        # writer.add_scalar(tag="conf_loss", scalar_value=train_conf_loss, global_step=epoch)
-        # writer.add_scalar(tag="loc_loss", scalar_value=train_loc_loss, global_step=epoch)
-        #
-        # # [TB] Histogram / one per epoch (takes more time (0.x seconds))
-        # for name, param in model.named_parameters():
-        #     writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch)
-        #
-        #
-        # # ********* EVALUATE MODEL *********
-        # if (epoch+1) % opt.evaluation_interval == 0:
-        #     print("\n---- Evaluating Model ----")
-        #     # try:
-        #     # Evaluate the model on the validation set
-        #     precision, recall, AP, f1, ap_class, val_loss = evaluate(
-        #         model,
-        #         validation_loader,
-        #         iou_thres=0.5,
-        #         conf_thres=0.5,
-        #         nms_thres=0.5,
-        #         input_size=opt.input_size
-        #     )
-        #
-        #     # Add values to tensorboard
-        #     writer.add_scalar(tag="val_precision", scalar_value=precision.mean(), global_step=epoch)
-        #     writer.add_scalar(tag="val_recall", scalar_value=recall.mean(), global_step=epoch)
-        #     writer.add_scalar(tag="val_mAP", scalar_value=AP.mean(), global_step=epoch)
-        #     writer.add_scalar(tag="val_f1", scalar_value=f1.mean(), global_step=epoch)
-        #     writer.add_scalar(tag="val_loss", scalar_value=val_loss, global_step=epoch)
-        #     writer.add_scalar(tag="train_val_loss_divergence", scalar_value=val_loss-train_loss, global_step=epoch)
-        #
-        #     # Print class APs and mAP
-        #     ap_table = [["Index", "Class name", "AP"]]
-        #     for i, c in enumerate(ap_class):
-        #         ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
-        #     print(AsciiTable(ap_table).table)
-        #     print("val_precision: {:.5f}".format(precision.mean()))
-        #     print("val_recall: {:.5f}".format(recall.mean()))
-        #     print("val_mAP: {:.5f}".format(AP.mean()))
-        #     print("val_f1: {:.5f}".format(f1.mean()))
-        #     print("val_loss: {:.5f}".format(val_loss))
-        #     print("train_val_loss_divergence: {:.5f}".format(val_loss-train_loss))
-        #
-        #     # except Exception as e:
-        #     #     print("ERROR EVALUATING MODEL!")
-        #     #     print(e)
+        # [TB] Histogram / one per epoch (takes more time (0.x seconds))
+        for name, param in model.named_parameters():
+            writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch+1)
+
 
         # Save best model
         if train_loss < best_loss:

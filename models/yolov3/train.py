@@ -28,13 +28,13 @@ if __name__ == "__main__":
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--model_def", type=str, help="path to model definition file")
     parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
-    parser.add_argument("--input_size", type=int, default=1280, help="size of each image dimension")
+    parser.add_argument("--input_size", type=int, default=1024, help="size of each image dimension")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=True, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.1, help="validation split [0..1]")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
-    parser.add_argument("--log_name", type=str, default="YOLOv3-1280-noweights", help="name of the experiment (tensorboard)")
+    parser.add_argument("--log_name", type=str, default="YOLOv3-1024-weights", help="name of the experiment (tensorboard)")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     parser.add_argument("--multiscale_training", default=False, help="allow for multi-scale training")
@@ -200,12 +200,12 @@ if __name__ == "__main__":
         for j, yolo in enumerate(model.yolo_layers):
             for name, metric in yolo.metrics.items():
                 if name != "grid_size":
-                    writer.add_scalar(tag="{}_{}".format(name, j + 1), scalar_value=metric, global_step=epoch)
-        writer.add_scalar(tag="loss", scalar_value=train_loss, global_step=epoch)
+                    writer.add_scalar(tag="{}_{}".format(name, j + 1), scalar_value=metric, global_step=epoch+1)
+        writer.add_scalar(tag="loss", scalar_value=train_loss, global_step=epoch+1)
 
         # [TB] Histogram / one per epoch (takes more time (0.x seconds))
         for name, param in model.named_parameters():
-            writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch)
+            writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch+1)
 
         # ********* EVALUATE MODEL *********
         if (epoch+1) % opt.evaluation_interval == 0:
@@ -222,12 +222,12 @@ if __name__ == "__main__":
                 )
 
                 # Add values to tensorboard
-                writer.add_scalar(tag="val_precision", scalar_value=precision.mean(), global_step=epoch)
-                writer.add_scalar(tag="val_recall", scalar_value=recall.mean(), global_step=epoch)
-                writer.add_scalar(tag="val_mAP", scalar_value=AP.mean(), global_step=epoch)
-                writer.add_scalar(tag="val_f1", scalar_value=f1.mean(), global_step=epoch)
-                writer.add_scalar(tag="val_loss", scalar_value=val_loss, global_step=epoch)
-                writer.add_scalar(tag="train_val_loss_divergence", scalar_value=val_loss-train_loss, global_step=epoch)
+                writer.add_scalar(tag="val_precision", scalar_value=precision.mean(), global_step=epoch+1)
+                writer.add_scalar(tag="val_recall", scalar_value=recall.mean(), global_step=epoch+1)
+                writer.add_scalar(tag="val_mAP", scalar_value=AP.mean(), global_step=epoch+1)
+                writer.add_scalar(tag="val_f1", scalar_value=f1.mean(), global_step=epoch+1)
+                writer.add_scalar(tag="val_loss", scalar_value=val_loss, global_step=epoch+1)
+                writer.add_scalar(tag="train_val_loss_divergence", scalar_value=val_loss-train_loss, global_step=epoch+1)
 
                 # Print class APs and mAP
                 ap_table = [["Index", "Class name", "AP"]]

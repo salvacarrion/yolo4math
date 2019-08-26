@@ -1,7 +1,7 @@
 from torch import nn
 from models.ssd.utils import *
 import torch.nn.functional as F
-from math import sqrt
+from math import sqrt, ceil
 from itertools import product as product
 import torchvision
 
@@ -325,10 +325,11 @@ class SSD300(nn.Module):
     The SSD300 network - encapsulates the base VGG network, auxiliary, and prediction convolutions.
     """
 
-    def __init__(self, n_classes):
+    def __init__(self, n_classes, input_size):
         super(SSD300, self).__init__()
 
         self.n_classes = n_classes
+        self.input_size = input_size
 
         self.base = VGGBase()
         self.aux_convs = AuxiliaryConvolutions()
@@ -340,7 +341,7 @@ class SSD300(nn.Module):
         nn.init.constant_(self.rescale_factors, 20)
 
         # Prior boxes
-        self.priors_cxcy = self.create_prior_boxes()
+        self.priors_cxcy = self.create_prior_boxes(self.input_size)
 
     def forward(self, image):
         """
@@ -368,18 +369,33 @@ class SSD300(nn.Module):
 
         return locs, classes_scores
 
-    def create_prior_boxes(self):
+    def create_prior_boxes(self, input_size):
         """
         Create the 8732 prior (default) boxes for the SSD300, as defined in the paper.
 
         :return: prior boxes in center-size coordinates, a tensor of dimensions (8732, 4)
         """
-        fmap_dims = {'conv4_3': 38,
-                     'conv7': 19,
-                     'conv8_2': 10,
-                     'conv9_2': 5,
-                     'conv10_2': 3,
-                     'conv11_2': 1}
+        # 300
+        # fmap_dims = {'conv4_3': 38,
+        #              'conv7': 19,
+        #              'conv8_2': 10,
+        #              'conv9_2': 5,
+        #              'conv10_2': 3,
+        #              'conv11_2': 1}
+
+        out1 = ceil(input_size/2/2/2)  # Max pooling
+        out2 = ceil(out1/2)  # Max pooling
+        out3 = ceil(out2/2)  # Stride 2
+        out4 = ceil(out3/2)  # Stride 2
+        out5 = ceil(out4-2)  # Padding 0
+        out6 = ceil(out5-2)  # Padding 0
+
+        fmap_dims = {'conv4_3': out1,
+                     'conv7': out2,
+                     'conv8_2': out3,
+                     'conv9_2': out4,
+                     'conv10_2': out5,
+                     'conv11_2': out6}
 
         obj_scales = {'conv4_3': 0.1,
                       'conv7': 0.2,
