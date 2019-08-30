@@ -17,26 +17,45 @@ from terminaltables import AsciiTable
 from models.ssd.model import SSD300, MultiBoxLoss
 # from models.ssd.datasets import PascalVOCDataset
 from models.ssd.utils import *
+from models.ssd.detect import *
 from models.ssd.test import evaluate
 
 from utils.datasets import *
 from utils.parse_config import *
 
 
+def eval(model, running_loss, epoch_batches_done, epoch):
+    # ********* AUX VARS *********
+    train_loss = running_loss / epoch_batches_done if epoch_batches_done else 0
+    train_conf_loss = running_conf_loss / epoch_batches_done if epoch_batches_done else 0
+    train_loc_loss = running_loc_loss / epoch_batches_done if epoch_batches_done else 0
+
+    # ********* LOG PROCESS *********
+    # [TB] Scalars
+    writer.add_scalar(tag="loss", scalar_value=train_loss, global_step=epoch)
+    writer.add_scalar(tag="conf_loss", scalar_value=train_conf_loss, global_step=epoch)
+    writer.add_scalar(tag="loc_loss", scalar_value=train_loc_loss, global_step=epoch)
+    #
+    # # [TB] Histogram / one per epoch (takes more time (0.x seconds))
+    # for name, param in model.named_parameters():
+    #     writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch)
+
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Equations
     parser.add_argument("--epochs", type=int, default=300, help="number of epochs")
-    parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
+    parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
-    parser.add_argument("--input_size", type=int, default=1024, help="size of each image dimension")
+    parser.add_argument("--input_size", type=int, default=(512, 400), help="size of each image dimension")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=True, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.1, help="validation split [0..1]")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
-    parser.add_argument("--log_name", type=str, default="SSD-1024", help="name of the experiment (tensorboard)")
+    parser.add_argument("--log_name", type=str, default="SSD-test", help="name of the experiment (tensorboard)")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     opt = parser.parse_args()
@@ -82,6 +101,8 @@ if __name__ == "__main__":
         model = checkpoint['model']
         optimizer = checkpoint['optimizer']
 
+    grad_clip = None  # clip if gradients are exploding, which may happen at larger batch sizes (sometimes at 32) - you will recognize it by a sorting error in the MuliBox loss calculation
+
     # Move to default device
     model = model.to(device)
     criterion = MultiBoxLoss(priors_cxcy=model.priors_cxcy).to(device)
@@ -114,7 +135,7 @@ if __name__ == "__main__":
     validation_loader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size, sampler=valid_sampler, num_workers=opt.n_cpu, pin_memory=True, collate_fn=dataset.collate_fn)
 
     # Optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    #optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     metrics = [
         "conf_loss",
@@ -139,48 +160,6 @@ if __name__ == "__main__":
 
         # Train model
         epoch_batches_done = 0
-        #
-        # # ********* EVALUATE MODEL *********
-        # if (epoch + 1) % opt.evaluation_interval == 0:
-        #     print("\n---- Evaluating Model ----")
-        #     # try:
-        #     # Evaluate the model on the validation set
-        #     precision, recall, AP, f1, ap_class, val_loss = evaluate(
-        #         model,
-        #         validation_loader,
-        #         iou_thres=0.5,
-        #         conf_thres=0.5,
-        #         nms_thres=0.5,
-        #         input_size=opt.input_size,
-        #         top_k=200,
-        #     )
-        #
-        #     # Add values to tensorboard
-        #     writer.add_scalar(tag="val_precision", scalar_value=precision.mean(), global_step=epoch + 1)
-        #     writer.add_scalar(tag="val_recall", scalar_value=recall.mean(), global_step=epoch + 1)
-        #     writer.add_scalar(tag="val_mAP", scalar_value=AP.mean(), global_step=epoch + 1)
-        #     writer.add_scalar(tag="val_f1", scalar_value=f1.mean(), global_step=epoch + 1)
-        #     writer.add_scalar(tag="val_loss", scalar_value=val_loss, global_step=epoch + 1)
-        #     writer.add_scalar(tag="train_val_loss_divergence", scalar_value=val_loss - train_loss,
-        #                       global_step=epoch + 1)
-        #
-        #     # Print class APs and mAP
-        #     ap_table = [["Index", "Class name", "AP"]]
-        #     for i, c in enumerate(ap_class):
-        #         ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
-        #     print(AsciiTable(ap_table).table)
-        #     print("val_precision: {:.5f}".format(precision.mean()))
-        #     print("val_recall: {:.5f}".format(recall.mean()))
-        #     print("val_mAP: {:.5f}".format(AP.mean()))
-        #     print("val_f1: {:.5f}".format(f1.mean()))
-        #     print("val_loss: {:.5f}".format(val_loss))
-        #     print("train_val_loss_divergence: {:.5f}".format(val_loss - train_loss))
-        #
-        #     # except Exception as e:
-        #     #     print("ERROR EVALUATING MODEL!")
-        #     #     print(e)
-
-
 
         for batch_i, (img_paths, images, boxes, labels) in enumerate(train_loader, 1):
 
@@ -191,10 +170,10 @@ if __name__ == "__main__":
             batches_done += 1
             epoch_batches_done += 1
 
-
-            # Sanity check I (img_path => only default transformations can be reverted)
-            # pl_bboxes = boxes[0].data.numpy()
-            # plot_bboxes(images[0], pl_bboxes, labels[0].data.numpy(), [1.0] * len(pl_bboxes), class_names,
+            # # Sanity check I (img_path => only default transformations can be reverted)
+            # pl_bboxes = np.array(boxes[0].data.numpy())
+            # pl_labels = np.array(labels[0].data.numpy())
+            # plot_bboxes(images[0], pl_bboxes, pl_labels, [1.0] * len(pl_bboxes), class_names,
             #             title="Augmented final ({})".format(img_paths[0]), colors=colors, coords_rel=True)
 
             # Inputs/Targets to device
@@ -209,6 +188,10 @@ if __name__ == "__main__":
             # Loss
             loss, l_metrics = criterion(predicted_locs, predicted_scores, boxes, labels)  # scalar
             loss.backward()
+
+            # Clip gradients, if necessary
+            if grad_clip is not None:
+                clip_gradient(optimizer, grad_clip)
 
             # Track losses
             running_loss += loss.item()
@@ -238,21 +221,24 @@ if __name__ == "__main__":
             log_str += "\nETA: {}".format(time_left)
             print(log_str)
 
-        # ********* AUX VARS *********
+            if (batch_i-1) % 90 == 0:
+                model.eval()
+                # img_path = '/home/salvacarrion/Documents/datasets/VOC2007/JPEGImages/000001.jpg'
+                # original_image = Image.open(img_path, mode='r')
+                # original_image = original_image.convert('RGB')
+                img_path = '/home/salvacarrion/Documents/datasets/equations/1024/10.1.1.1.2018_5.jpg'
+                myimg = detect(model, img_path, min_score=0.2, max_overlap=0.5, top_k=200, class_names=class_names,
+                               save_path="output/mine_e{}_{}.jpg".format((epoch+1)%5, batch_i-1),
+                               input_size=opt.input_size)
+                #myimg.save("output/mine_e{}_{}.jpg".format(epoch-1, batch_i-1), "JPEG")
+                # myimg.show()
+                model.train()
+
+            # Evaluate model
+            eval(model, running_loss, epoch_batches_done, batches_done)
+
+        # Loss
         train_loss = running_loss / epoch_batches_done
-        train_conf_loss = running_conf_loss / epoch_batches_done
-        train_loc_loss = running_loc_loss / epoch_batches_done
-
-        # ********* LOG PROCESS *********
-        # [TB] Scalars
-        writer.add_scalar(tag="loss", scalar_value=train_loss, global_step=epoch+1)
-        writer.add_scalar(tag="conf_loss", scalar_value=train_conf_loss, global_step=epoch+1)
-        writer.add_scalar(tag="loc_loss", scalar_value=train_loc_loss, global_step=epoch+1)
-
-        # [TB] Histogram / one per epoch (takes more time (0.x seconds))
-        for name, param in model.named_parameters():
-            writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch+1)
-
 
         # Save best model
         if train_loss < best_loss:

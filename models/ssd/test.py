@@ -55,13 +55,17 @@ def evaluate(model, dataloader, iou_thres, conf_thres, nms_thres, input_size, to
             # Forward prop.
             images = images.to(device)
             predicted_locs, predicted_scores = model(images)
+            #
+            # indxs_priors = torch.randint(0, len(predicted_scores[0]), (15000,))
+            # predicted_locs = predicted_locs[0][indxs_priors].unsqueeze(0)
+            # predicted_scores = predicted_scores[0][indxs_priors].unsqueeze(0)
 
              # Detect objects in SSD output
             det_boxes_batch, det_labels_batch, det_scores_batch = model.detect_objects(
-                predicted_locs, predicted_scores, min_score=conf_thres, max_overlap=nms_thres, top_k=top_k)
+                predicted_locs, predicted_scores, min_score=0.2, max_overlap=0.5, top_k=50, idxs=None)
 
             # Get boxes
-            class_ids = det_labels_batch[0].cpu()
+            class_ids = det_labels_batch[0].cpu()-1
             p_bboxes = det_boxes_batch[0].cpu()
             t_bboxes = xywh2xyxy(targets[targets[:, 0] == 0][:, 2:].cpu())
 
@@ -114,7 +118,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
-    parser.add_argument("--model_def", type=str, help="path to model definition file")
     parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
     parser.add_argument("--input_size", type=int, default=300, help="size of each image dimension")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
@@ -125,7 +128,7 @@ if __name__ == "__main__":
     parser.add_argument("--conf_thres", type=float, default=0.5, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
     parser.add_argument("--top_k", type=int, default=200, help="Keep top K best hypothesis")
-    parser.add_argument("--plot_detections", type=int, default=None, help="Number of detections to plot and save")
+    parser.add_argument("--plot_detections", type=int, default=50, help="Number of detections to plot and save")
     opt = parser.parse_args()
     print(opt)
 

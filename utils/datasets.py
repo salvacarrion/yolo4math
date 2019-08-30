@@ -13,6 +13,88 @@ from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 
 from utils.utils import *
+from models.ssd.utils import transform
+
+
+
+
+class PascalVOCDataset(Dataset):
+    """
+    A PyTorch Dataset class to be used in a PyTorch DataLoader to create batches.
+    """
+
+    def __init__(self, data_folder, split, keep_difficult=False):
+        """
+        :param data_folder: folder where data files are stored
+        :param split: split, one of 'TRAIN' or 'TEST'
+        :param keep_difficult: keep or discard objects that are considered difficult to detect?
+        """
+        self.split = split.upper()
+
+        assert self.split in {'TRAIN', 'TEST'}
+
+        self.data_folder = data_folder
+        self.keep_difficult = keep_difficult
+
+        # Read data files
+        with open(os.path.join(data_folder, self.split + '_images.json'), 'r') as j:
+            self.images = json.load(j)
+        with open(os.path.join(data_folder, self.split + '_objects.json'), 'r') as j:
+            self.objects = json.load(j)
+
+        assert len(self.images) == len(self.objects)
+
+    def __getitem__(self, i):
+        # Read image
+        image = Image.open(self.images[i], mode='r')
+        image = image.convert('RGB')
+
+        # Read objects in this image (bounding boxes, labels, difficulties)
+        objects = self.objects[i]
+        boxes = torch.FloatTensor(objects['boxes'])  # (n_objects, 4)
+        labels = torch.LongTensor(objects['labels'])  # (n_objects)
+        difficulties = torch.ByteTensor(objects['difficulties'])  # (n_objects)
+
+        # Discard difficult objects, if desired
+        if not self.keep_difficult:
+            boxes = boxes[1 - difficulties]
+            labels = labels[1 - difficulties]
+            difficulties = difficulties[1 - difficulties]
+
+        # Apply transformations
+        image, boxes, labels, difficulties = transform(image, boxes, labels, difficulties, split=self.split)
+
+        return image, boxes, labels, difficulties
+
+    def __len__(self):
+        return len(self.images)
+
+    def collate_fn(self, batch):
+        """
+        Since each image may have a different number of objects, we need a collate function (to be passed to the DataLoader).
+
+        This describes how to combine these tensors of different sizes. We use lists.
+
+        Note: this need not be defined in this Class, can be standalone.
+
+        :param batch: an iterable of N sets from __getitem__()
+        :return: a tensor of images, lists of varying-size tensors of bounding boxes, labels, and difficulties
+        """
+
+        images = list()
+        boxes = list()
+        labels = list()
+        difficulties = list()
+
+        for b in batch:
+            images.append(b[0])
+            boxes.append(b[1])
+            labels.append(b[2])
+            difficulties.append(b[3])
+
+        images = torch.stack(images, dim=0)
+
+        return images, boxes, labels, difficulties  # tensor (N, 3, 300, 300), 3 lists of N tensors each
 
 
 class ListDatasetSSD(Dataset):
@@ -24,8 +106,6 @@ class ListDatasetSSD(Dataset):
         self.transform = transform
         self.normalized_bboxes = normalized_bboxes
         self.multiscale = multiscale
-        self.min_input_size = self.input_size - 3 * 32  # Network stride
-        self.max_input_size = self.input_size + 3 * 32
         self.balance_classes = balance_classes
         self.class_counter = np.zeros(len(class_names))
         self.ignored, self.total = 0, 0
@@ -34,8 +114,8 @@ class ListDatasetSSD(Dataset):
         # Data format
         self.data_format = A.Compose([
             A.ToGray(p=1.0),
-            A.LongestMaxSize(max_size=self.input_size, interpolation=cv2.INTER_AREA),
-            A.PadIfNeeded(min_height=self.input_size, min_width=self.input_size, border_mode=cv2.BORDER_CONSTANT,
+            A.LongestMaxSize(max_size=self.input_size[0], interpolation=cv2.INTER_AREA),
+            A.PadIfNeeded(min_height=self.input_size[0], min_width=self.input_size[1], border_mode=cv2.BORDER_CONSTANT,
                           value=(128, 128, 128)),
         ], p=1)
 
@@ -50,6 +130,8 @@ class ListDatasetSSD(Dataset):
             if os.path.exists(label_path):
                 self.img_files.append(img_path)
                 self.label_files.append(label_path)
+
+
 
     def __getitem__(self, index):
         # For debugging
@@ -124,9 +206,9 @@ class ListDatasetSSD(Dataset):
         bboxes_labels = bboxes_labels[kept_indices]  # Math dimensions
 
         # Keep embedded/isolated (debugging)
-        # kept_indices = torch.ByteTensor(bboxes_labels == 2)
-        # bboxes_labels = bboxes_labels[kept_indices]
-        # bboxes_xyxy_abs = bboxes_xyxy_abs[kept_indices]
+        kept_indices = torch.ByteTensor(bboxes_labels == 2)
+        bboxes_labels = bboxes_labels[kept_indices]
+        bboxes_xyxy_abs = bboxes_xyxy_abs[kept_indices]
 
         # Sanity check III
         # plot_bboxes(img, bboxes_xyxy_abs, title="Augmented Fix ({})".format(img_path))
@@ -373,3 +455,31 @@ class ImageFolder(Dataset):
     def __len__(self):
         return len(self.images)
 
+
+class SingleImage:
+    def __init__(self, input_size, transform=None):
+        self.images = []
+        self.input_size = input_size
+        self.transform = transform
+
+        # Data format
+        self.data_format = A.Compose([
+            A.ToGray(p=1.0),
+            A.LongestMaxSize(max_size=self.input_size[0], interpolation=cv2.INTER_AREA),
+            A.PadIfNeeded(min_height=self.input_size[0], min_width=self.input_size[1], border_mode=cv2.BORDER_CONSTANT,
+                          value=(128, 128, 128)),
+        ], p=1)
+
+
+    def apply_transform(self, img_path):
+        # Load image as RGB
+        img = np.asarray(Image.open(img_path).convert('RGB'))  # L
+
+        # Default image format
+        img = self.data_format(image=img)
+        img = img['image']
+
+        # Convert image (PIL/Numpy) to PyTorch Tensor
+        img = transforms.ToTensor()(img)
+
+        return img

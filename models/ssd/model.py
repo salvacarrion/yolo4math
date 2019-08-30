@@ -383,19 +383,20 @@ class SSD300(nn.Module):
         #              'conv10_2': 3,
         #              'conv11_2': 1}
 
-        out1 = ceil(input_size/2/2/2)  # Max pooling
-        out2 = ceil(out1/2)  # Max pooling
-        out3 = ceil(out2/2)  # Stride 2
-        out4 = ceil(out3/2)  # Stride 2
-        out5 = ceil(out4-2)  # Padding 0
-        out6 = ceil(out5-2)  # Padding 0
+        # H, W
+        out1_0, out1_1 = ceil(input_size[0]/2/2/2), ceil(input_size[1]/2/2/2)  # Max pooling
+        out2_0, out2_1 = ceil(out1_0/2), ceil(out1_1/2)  # Max pooling
+        out3_0, out3_1 = ceil(out2_0/2), ceil(out2_1/2)  # Stride 2
+        out4_0, out4_1 = ceil(out3_0/2), ceil(out3_1/2)  # Stride 2
+        out5_0, out5_1 = ceil(out4_0-2), ceil(out4_1-2)  # Padding 0
+        out6_0, out6_1 = ceil(out5_0-2), ceil(out5_1-2)  # Padding 0
 
-        fmap_dims = {'conv4_3': out1,
-                     'conv7': out2,
-                     'conv8_2': out3,
-                     'conv9_2': out4,
-                     'conv10_2': out5,
-                     'conv11_2': out6}
+        fmap_dims = {'conv4_3': (out1_0, out1_1),
+                     'conv7': (out2_0, out2_1),
+                     'conv8_2': (out3_0, out3_1),
+                     'conv9_2': (out4_0, out4_1),
+                     'conv10_2': (out5_0, out5_1),
+                     'conv11_2': (out6_0, out6_1)}
 
         obj_scales = {'conv4_3': 0.1,
                       'conv7': 0.2,
@@ -416,10 +417,10 @@ class SSD300(nn.Module):
         prior_boxes = []
 
         for k, fmap in enumerate(fmaps):
-            for i in range(fmap_dims[fmap]):
-                for j in range(fmap_dims[fmap]):
-                    cx = (j + 0.5) / fmap_dims[fmap]
-                    cy = (i + 0.5) / fmap_dims[fmap]
+            for i in range(fmap_dims[fmap][1]):
+                for j in range(fmap_dims[fmap][0]):
+                    cx = (j + 0.5) / fmap_dims[fmap][1]
+                    cy = (i + 0.5) / fmap_dims[fmap][0]
 
                     for ratio in aspect_ratios[fmap]:
                         prior_boxes.append([cx, cy, obj_scales[fmap] * sqrt(ratio), obj_scales[fmap] / sqrt(ratio)])
@@ -488,6 +489,13 @@ class SSD300(nn.Module):
 
                 # Sort predicted boxes and scores by scores
                 class_scores, sort_ind = class_scores.sort(dim=0, descending=True)  # (n_qualified), (n_min_score)
+
+                # Control maxium number of hypothesis
+                max_indxs = min(len(sort_ind), 8000)
+                class_scores = class_scores[:max_indxs]
+                sort_ind = sort_ind[:max_indxs]
+                n_above_min_score = len(sort_ind)
+
                 class_decoded_locs = class_decoded_locs[sort_ind]  # (n_min_score, 4)
 
                 # Find the overlap between predicted boxes

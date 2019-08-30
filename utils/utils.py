@@ -691,7 +691,7 @@ import torch.optim as optim
 def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None, show_results=True, save_path=None, title=None, colors=None, t_bboxes=None, t_class_ids=None, coords_rel=False):
     # Settings
     dpi = 80
-    txt_y_offset = 1.0
+    txt_y_offset = 0.5
     img = img2img(img)  # Force casting
     img_h, img_w = img.shape[:2]
     t_color = np.array([0.0, 200.0, 0.0, 150.0]) / 255.0
@@ -962,3 +962,5 @@ def balance_batch(labels, class_counter):
     kept_indices = np.array(kept_indices)
     np.random.shuffle(kept_indices)
     return kept_indices
+
+

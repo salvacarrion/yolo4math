@@ -115,7 +115,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--model_def", type=str, help="path to model definition file")
     parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
-    parser.add_argument("--input_size", type=int, default=1280, help="size of each image dimension")
+    parser.add_argument("--input_size", type=int, default=1024, help="size of each image dimension")
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=False, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.0, help="validation split [0..1]")
@@ -123,7 +123,7 @@ if __name__ == "__main__":
     parser.add_argument("--iou_thres", type=float, default=0.5, help="iou threshold required to qualify as detected")
     parser.add_argument("--conf_thres", type=float, default=0.5, help="object confidence threshold")
     parser.add_argument("--nms_thres", type=float, default=0.5, help="iou thresshold for non-maximum suppression")
-    parser.add_argument("--top_k", type=int, default=200, help="Keep top K best hypothesis")
+    #parser.add_argument("--top_k", type=int, default=200, help="Keep top K best hypothesis")
     parser.add_argument("--plot_detections", type=int, default=50, help="Number of detections to plot and save")
     opt = parser.parse_args()
     print(opt)
@@ -154,9 +154,9 @@ if __name__ == "__main__":
     mAP_list = []
     loss_list = []
 
-    iou_thres_grid = [0.5]
-    conf_thres_grid = [0.5]
-    nms_thres_grid = [0.3]
+    iou_thres_grid  = [0.5] #[0.1, 0.3, 0.5, 0.7, 0.9]
+    conf_thres_grid = [0.5] #[0.1, 0.3, 0.5, 0.7, 0.9]
+    nms_thres_grid  = [0.3] #[0.1, 0.3, 0.5, 0.7, 0.9]
 
     print("Grids:")
     print("\t- IOU thresholds: " + str(iou_thres_grid))  # What we consider as a positive result (checked against GT)
