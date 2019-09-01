@@ -10,64 +10,135 @@ import albumentations as A
 
 # from utils.augmentations import horisontal_flip
 from torch.utils.data import Dataset
-import torchvision.transforms as transforms
-
+from torchvision import transforms
 from utils.utils import *
 from models.ssd.utils import transform
 
 
 
+def resize(image, size):
+    image = F.interpolate(image.unsqueeze(0), size=size, mode="nearest").squeeze(0)
+    return image
+
 
 class PascalVOCDataset(Dataset):
-    """
-    A PyTorch Dataset class to be used in a PyTorch DataLoader to create batches.
-    """
-
-    def __init__(self, data_folder, split, keep_difficult=False):
-        """
-        :param data_folder: folder where data files are stored
-        :param split: split, one of 'TRAIN' or 'TEST'
-        :param keep_difficult: keep or discard objects that are considered difficult to detect?
-        """
-        self.split = split.upper()
-
-        assert self.split in {'TRAIN', 'TEST'}
-
-        self.data_folder = data_folder
-        self.keep_difficult = keep_difficult
+    def __init__(self, dataset_path, input_size, transform=None, multiscale=False, normalized_bboxes=True,
+             balance_classes=False, class_names=None, single_channel=False):
+        self.img_files = []
+        self.label_files = []
+        self.input_size = input_size
+        self.transform = transform
+        self.normalized_bboxes = normalized_bboxes
+        self.multiscale = multiscale
+        self.balance_classes = balance_classes
+        self.class_counter = np.zeros(len(class_names))
+        self.ignored, self.total = 0, 0
+        self.single_channel = single_channel
 
         # Read data files
-        with open(os.path.join(data_folder, self.split + '_images.json'), 'r') as j:
-            self.images = json.load(j)
-        with open(os.path.join(data_folder, self.split + '_objects.json'), 'r') as j:
-            self.objects = json.load(j)
+        with open(os.path.join(dataset_path, 'TRAIN_images.json'), 'r') as j:
+            self.img_files = json.load(j)
+        with open(os.path.join(dataset_path, 'TRAIN_objects.json'), 'r') as j:
+            self.label_files = json.load(j)
 
-        assert len(self.images) == len(self.objects)
+        assert len(self.img_files) == len(self.label_files)
 
-    def __getitem__(self, i):
-        # Read image
-        image = Image.open(self.images[i], mode='r')
-        image = image.convert('RGB')
 
-        # Read objects in this image (bounding boxes, labels, difficulties)
-        objects = self.objects[i]
-        boxes = torch.FloatTensor(objects['boxes'])  # (n_objects, 4)
-        labels = torch.LongTensor(objects['labels'])  # (n_objects)
-        difficulties = torch.ByteTensor(objects['difficulties'])  # (n_objects)
+    def __getitem__(self, index):
+            # For debugging
+            # print("Index: {}".format(index))
+            # index = 174
+            index = index
+            # Get paths
+            img_path = self.img_files[index % len(self.img_files)].rstrip()
+            annotations = self.label_files[index % len(self.img_files)]
 
-        # Discard difficult objects, if desired
-        if not self.keep_difficult:
-            boxes = boxes[1 - difficulties]
-            labels = labels[1 - difficulties]
-            difficulties = difficulties[1 - difficulties]
+            # Load bboxes and labels
+            bboxes_xyxy_abs = torch.FloatTensor(annotations['boxes'])
+            bboxes_labels = torch.LongTensor(annotations['labels'])
 
-        # Apply transformations
-        image, boxes, labels, difficulties = transform(image, boxes, labels, difficulties, split=self.split)
+            # Ignore image if empty boxes
+            if bboxes_xyxy_abs.size(0) == 0:
+                self.ignored += 1
+                print("Ignored {}/{}".format(self.ignored, self.total))
+                return img_path, None, None
 
-        return image, boxes, labels, difficulties
+            # Load image
+            img = np.asarray(Image.open(img_path).convert('RGB'))
 
-    def __len__(self):
-        return len(self.images)
+            # Get input dimensions
+            h, w, c = img.shape
+            h_factor, w_factor = (h, w) if self.normalized_bboxes else (1, 1)
+
+            # Sanity check I
+            # plot_bboxes(img, bboxes_xyxy_abs, title="Original ({})".format(img_path))
+
+
+            min_w = min(w, self.input_size[1])
+            min_h = min(h, self.input_size[0])
+            max_side = max(min_h, min_w)
+
+            # Data format
+            self.data_format = A.Compose([
+                # A.ToGray(p=1.0),
+                A.LongestMaxSize(max_size=max_side, interpolation=cv2.INTER_AREA),
+                A.PadIfNeeded(min_height=self.input_size[0], min_width=self.input_size[1],
+                              border_mode=cv2.BORDER_CONSTANT,
+                              value=(128, 128, 128)),
+            ], p=1)
+
+
+            # Convert bboxes to albumentations [BBOXES=NUMPY]
+            bboxes_albu = convert_bboxes_to_albumentations(bboxes_xyxy_abs.numpy(), source_format='pascal_voc', rows=img.shape[0], cols=img.shape[1])
+
+            # Default image format
+            img_format = self.data_format(image=img, bboxes=bboxes_albu)
+            img = img_format['image'][..., 0] if self.single_channel else img_format['image']  # 1 vs. 3 channels
+            # img = img[..., np.newaxis]  # Add channel dimension
+            bboxes_albu = img_format['bboxes']
+
+            # Custom transformations
+            if self.transform:
+                # Perform augmentation
+                img_format = self.transform(image=img, bboxes=bboxes_albu)
+                img = img_format['image']
+                bboxes_albu = img_format['bboxes']
+
+            # Convert bboxes from albumentations [BBOXES=NUMPY]
+            bboxes_xyxy_abs = convert_bboxes_from_albumentations(bboxes_albu, target_format='pascal_voc', rows=img.shape[0], cols=img.shape[1])
+
+            # Sanity check II
+            # print("Regions: {}".format(len(bboxes_xyxy_abs)))
+            # plot_bboxes(img, bboxes_xyxy_abs, title="Augmented ({})".format(img_path))
+
+            # Convert (PIL/Numpy) to PyTorch Tensor
+            img = transforms.ToTensor()(Image.fromarray(img))
+            img_c, img_h, img_w = img.shape
+
+            # Fix bboxes (keep into the region boundaries)
+            bboxes_xyxy_abs = torch.tensor(bboxes_xyxy_abs)
+            bboxes_xyxy_abs, kept_indices = fix_bboxes(bboxes_xyxy_abs, img_h, img_w)  # Use new size (padding)
+            #bboxes_labels += 1  # Background starts at 0
+            bboxes_labels = bboxes_labels[kept_indices]  # Math dimensions
+
+            # Keep embedded/isolated (debugging)
+            # kept_indices = torch.ByteTensor(bboxes_labels == 2)
+            # bboxes_labels = bboxes_labels[kept_indices]
+            # bboxes_xyxy_abs = bboxes_xyxy_abs[kept_indices]
+
+            # Sanity check III
+            # plot_bboxes(img, bboxes_xyxy_abs, title="Augmented Fix ({})".format(img_path))
+
+            # Format boxes to REL(xywh)
+            boxes_xyxy_rel = abs2rel(bboxes_xyxy_abs, img_h, img_w)  # new size (padding)
+
+            # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+            #                                  std=[0.229, 0.224, 0.225])
+            # img = normalize(img)
+
+            # print(self.class_counter.tolist())
+            self.total += 1
+            return img_path, img, boxes_xyxy_rel, bboxes_labels.type(torch.int64)
 
     def collate_fn(self, batch):
         """
@@ -81,25 +152,30 @@ class PascalVOCDataset(Dataset):
         :return: a tensor of images, lists of varying-size tensors of bounding boxes, labels, and difficulties
         """
 
+        img_paths = list()
         images = list()
         boxes = list()
         labels = list()
-        difficulties = list()
 
         for b in batch:
-            images.append(b[0])
-            boxes.append(b[1])
-            labels.append(b[2])
-            difficulties.append(b[3])
+            if len(b[2]) == 0:  # Skip images without bounding boxes
+                continue
+            img_paths.append(b[0])
+            images.append(b[1])
+            boxes.append(b[2])
+            labels.append(b[3])
 
-        images = torch.stack(images, dim=0)
+        images = torch.stack(images, dim=0) if images else images
 
-        return images, boxes, labels, difficulties  # tensor (N, 3, 300, 300), 3 lists of N tensors each
+        return img_paths, images, boxes, labels  # tensor (N, 3, 300, 300), 3 lists of N tensors each
+
+    def __len__(self):
+        return len(self.img_files)
 
 
 class ListDatasetSSD(Dataset):
     def __init__(self, images_path, labels_path, input_size, transform=None, multiscale=False, normalized_bboxes=True,
-                 balance_classes=False, class_names=None, single_channel=True):
+                 balance_classes=False, class_names=None, single_channel=False):
         self.img_files = []
         self.label_files = []
         self.input_size = input_size
@@ -110,14 +186,6 @@ class ListDatasetSSD(Dataset):
         self.class_counter = np.zeros(len(class_names))
         self.ignored, self.total = 0, 0
         self.single_channel = single_channel
-
-        # Data format
-        self.data_format = A.Compose([
-            A.ToGray(p=1.0),
-            A.LongestMaxSize(max_size=self.input_size[0], interpolation=cv2.INTER_AREA),
-            A.PadIfNeeded(min_height=self.input_size[0], min_width=self.input_size[1], border_mode=cv2.BORDER_CONSTANT,
-                          value=(128, 128, 128)),
-        ], p=1)
 
         # Get files
         self.img_files = []
@@ -162,6 +230,20 @@ class ListDatasetSSD(Dataset):
         # Get input dimensions
         h, w, c = img.shape
         h_factor, w_factor = (h, w) if self.normalized_bboxes else (1, 1)
+
+        min_w = min(w, self.input_size[1])
+        min_h = min(h, self.input_size[0])
+        max_side = max(min_h, min_w)
+
+        # Data format
+        self.data_format = A.Compose([
+            #A.ToGray(p=1.0),
+            A.LongestMaxSize(max_size=max_side, interpolation=cv2.INTER_AREA),
+            A.PadIfNeeded(min_height=self.input_size[0], min_width=self.input_size[1],
+                          border_mode=cv2.BORDER_CONSTANT,
+                          value=(128, 128, 128)),
+        ], p=1)
+
 
         # Convert bboxes
         bboxes_labels = bboxes[:, 0]
@@ -216,6 +298,10 @@ class ListDatasetSSD(Dataset):
         # Format boxes to REL(xywh)
         boxes_xyxy_rel = abs2rel(bboxes_xyxy_abs, img_h, img_w)  # new size (padding)
 
+        # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                                  std=[0.229, 0.224, 0.225])
+        # img = normalize(img)
+
         # print(self.class_counter.tolist())
         self.total += 1
         return img_path, img, boxes_xyxy_rel, bboxes_labels.type(torch.int64)
@@ -268,6 +354,7 @@ class ListDataset(Dataset):
         self.class_counter = np.zeros(len(class_names))
         self.ignored, self.total = 0, 0
         self.single_channel = single_channel
+        self.batch_count = 0
 
         # Data format
         self.data_format = A.Compose([
@@ -405,8 +492,15 @@ class ListDataset(Dataset):
         # Stack all boxes (fixed sized)
         targets = torch.cat(targets, dim=0)
 
+        # Selects new image size every tenth batch
+        if self.multiscale and self.batch_count % 10 == 0:
+            self.input_size = random.choice(range(self.min_input_size, self.max_input_size + 1, 32))
+        # Resize images to input shape
+        imgs = torch.stack([resize(img, self.input_size) for img in imgs])
+
         # Images to Tensor
-        imgs = torch.stack([img for img in imgs])
+        # imgs = torch.stack([img for img in imgs])
+        self.batch_count += 1
         return img_paths, imgs, targets
 
     def __len__(self):
@@ -464,7 +558,7 @@ class SingleImage:
 
         # Data format
         self.data_format = A.Compose([
-            A.ToGray(p=1.0),
+            # A.ToGray(p=1.0),
             A.LongestMaxSize(max_size=self.input_size[0], interpolation=cv2.INTER_AREA),
             A.PadIfNeeded(min_height=self.input_size[0], min_width=self.input_size[1], border_mode=cv2.BORDER_CONSTANT,
                           value=(128, 128, 128)),

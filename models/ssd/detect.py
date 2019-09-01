@@ -21,11 +21,11 @@ from utils.datasets import SingleImage
 # model = checkpoint['model']
 # model = model.to(device)
 
-# # Transforms
-# resize = transforms.Resize((1024, 1024))
-# to_tensor = transforms.ToTensor()
-# normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-#                                  std=[0.229, 0.224, 0.225])
+# Transforms
+resize = transforms.Resize((1024, 1024))
+to_tensor = transforms.ToTensor()
+normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
 
 
 def detect(model, image_path, min_score, max_overlap, top_k, suppress=None, class_names=None, save_path=None,
@@ -45,6 +45,7 @@ def detect(model, image_path, min_score, max_overlap, top_k, suppress=None, clas
     #image = normalize(to_tensor(resize(original_image)))
     tf = SingleImage(input_size)
     image = tf.apply_transform(image_path)
+    # image = normalize(image1)
 
     # Move to default device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -56,7 +57,7 @@ def detect(model, image_path, min_score, max_overlap, top_k, suppress=None, clas
 
     # Detect objects in SSD output
     det_boxes, det_labels, det_scores = model.detect_objects(predicted_locs, predicted_scores, min_score=min_score,
-                                                             max_overlap=max_overlap, top_k=top_k)
+                                                             max_overlap=max_overlap, top_k=top_k, cpu=True)
 
     # Clip predictions
     for i in range(len(det_boxes)):
@@ -71,9 +72,25 @@ def detect(model, image_path, min_score, max_overlap, top_k, suppress=None, clas
 
 
 if __name__ == '__main__':
-    model_path = "/home/salvacarrion/Documents/Programming/Python/Projects/yolo4math/checkpoints/ssd_best_1024_165i.pth"
+    model_path = "/home/salvacarrion/Documents/Programming/Python/Projects/yolo4math/checkpoints/ssd_best.pth"
     model = torch.load(model_path)
     model.eval()
 
-    img_path = '/home/salvacarrion/Documents/datasets/equations/1024/10.1.1.1.2018_5.jpg'
-    detect(model, img_path, min_score=0.2, max_overlap=0.5, top_k=200, input_size=(1024, 1024)).show()
+    img_path = '/home/salvacarrion/Documents/datasets/equations/1024/{}'
+    class_names = ['background', 'embedded', 'isolated']
+    for p in ["10.1.1.1.2018_5.jpg", "10.1.1.1.2007_11.jpg", "10.1.1.1.2005_13.jpg"]:
+        p = img_path.format(p)
+        detect(model, p, min_score=0.2, max_overlap=0.3, top_k=200, input_size=(512, 400), class_names=class_names)
+
+    #
+    # img_path = '/home/salvacarrion/Documents/datasets/VOC2007/JPEGImages/{}'
+    #
+    # class_names = {"background": 0, "aeroplane": 1, "bicycle": 2, "bird": 3, "boat": 4, "bottle": 5, "bus": 6, "car": 7,
+    #                "cat": 8, "chair": 9, "cow": 10, "diningtable": 11, "dog": 12, "horse": 13, "motorbike": 14,
+    #                "person": 15, "pottedplant": 16, "sheep": 17, "sofa": 18, "train": 19, "tvmonitor": 20}
+    # class_names = list(class_names.keys())
+    #
+    # for p in ['008344.jpg', '006324.jpg', '0008843.jpg', '008344.jpg', '001262.jpg']:
+    #     p = img_path.format(p)
+    #     detect(model, p, min_score=0.5, max_overlap=0.3, top_k=200, input_size=(300, 300), class_names=class_names)
+    #     ads = 33

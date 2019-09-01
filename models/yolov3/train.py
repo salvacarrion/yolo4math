@@ -34,7 +34,7 @@ if __name__ == "__main__":
     parser.add_argument("--validation_split", type=float, default=0.1, help="validation split [0..1]")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
-    parser.add_argument("--log_name", type=str, default="YOLOv3-1024-noweights-3clusters", help="name of the experiment (tensorboard)")
+    parser.add_argument("--log_name", type=str, default="YOLOv3-1024-noweights-6clusters-test", help="name of the experiment (tensorboard)")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     parser.add_argument("--multiscale_training", default=False, help="allow for multi-scale training")
@@ -77,7 +77,8 @@ if __name__ == "__main__":
     ], p=1.0)
 
     # Get dataloader
-    dataset = ListDataset(images_path=images_path, labels_path=labels_path, input_size=opt.input_size, transform=data_aug, balance_classes=False, class_names=class_names)
+    dataset = ListDataset(images_path=images_path, labels_path=labels_path, input_size=opt.input_size, transform=data_aug, balance_classes=False, class_names=class_names ,multiscale=opt.multiscale_training)
+    dataset2 = ListDataset(images_path=images_path, labels_path=labels_path, input_size=opt.input_size, transform=data_aug, balance_classes=False, class_names=class_names ,multiscale=False)
 
     # Creating data indices for training and validation splits:
     dataset_size = len(dataset)
@@ -93,7 +94,7 @@ if __name__ == "__main__":
 
     # Build data loader
     train_loader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size, sampler=train_sampler, num_workers=opt.n_cpu, pin_memory=True, collate_fn=dataset.collate_fn)
-    validation_loader = torch.utils.data.DataLoader(dataset, batch_size=opt.batch_size, sampler=valid_sampler, num_workers=opt.n_cpu, pin_memory=True, collate_fn=dataset.collate_fn)
+    validation_loader = torch.utils.data.DataLoader(dataset2, batch_size=opt.batch_size, sampler=valid_sampler, num_workers=opt.n_cpu, pin_memory=True, collate_fn=dataset2.collate_fn)
 
     # Optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -124,7 +125,7 @@ if __name__ == "__main__":
     best_loss = 999999999
     batches_done = 0
     # Start training
-    for epoch in range(opt.epochs):
+    for epoch in range(0, opt.epochs):
         start_time = time.time()
         model.train()
         running_loss = 0
@@ -208,7 +209,7 @@ if __name__ == "__main__":
             writer.add_histogram(name, param.clone().cpu().data.numpy(), global_step=epoch+1)
 
         # ********* EVALUATE MODEL *********
-        if (epoch+1) % opt.evaluation_interval == 0:
+        if (epoch+1) % opt.evaluation_interval == 30:
             print("\n---- Evaluating Model ----")
             try:
                 # Evaluate the model on the validation set

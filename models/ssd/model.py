@@ -159,6 +159,8 @@ class AuxiliaryConvolutions(nn.Module):
             if isinstance(c, nn.Conv2d):
                 nn.init.xavier_uniform_(c.weight)
                 nn.init.constant_(c.bias, 0.)
+                # if c.bias is not None:
+                #     torch.nn.init.xavier_uniform_(c.bias)
 
     def forward(self, conv7_feats):
         """
@@ -206,12 +208,18 @@ class PredictionConvolutions(nn.Module):
         self.n_classes = n_classes
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 4,
-                   'conv7': 6,
-                   'conv8_2': 6,
-                   'conv9_2': 6,
+        n_boxes = {'conv4_3': 2,
+                   'conv7': 2,
+                   'conv8_2': 3,
+                   'conv9_2': 3,
                    'conv10_2': 4,
                    'conv11_2': 4}
+        # n_boxes = {'conv4_3': 4,
+        #            'conv7': 6,
+        #            'conv8_2': 6,
+        #            'conv9_2': 6,
+        #            'conv10_2': 4,
+        #            'conv11_2': 4}
         # 4 prior-boxes implies we use 4 different aspect ratios, etc.
 
         # Localization prediction convolutions (predict offsets w.r.t prior-boxes)
@@ -241,6 +249,8 @@ class PredictionConvolutions(nn.Module):
             if isinstance(c, nn.Conv2d):
                 nn.init.xavier_uniform_(c.weight)
                 nn.init.constant_(c.bias, 0.)
+                # if c.bias is not None:
+                #     torch.nn.init.xavier_uniform_(c.bias)
 
     def forward(self, conv4_3_feats, conv7_feats, conv8_2_feats, conv9_2_feats, conv10_2_feats, conv11_2_feats):
         """
@@ -405,12 +415,19 @@ class SSD300(nn.Module):
                       'conv10_2': 0.725,
                       'conv11_2': 0.9}
 
-        aspect_ratios = {'conv4_3': [1., 2., 0.5],
-                         'conv7': [1., 2., 3., 0.5, .333],
-                         'conv8_2': [1., 2., 3., 0.5, .333],
-                         'conv9_2': [1., 2., 3., 0.5, .333],
+        aspect_ratios = {'conv4_3': [1.],
+                         'conv7': [1.],
+                         'conv8_2': [1., 2.],
+                         'conv9_2': [1., 2.],
                          'conv10_2': [1., 2., 0.5],
                          'conv11_2': [1., 2., 0.5]}
+        #
+        # aspect_ratios = {'conv4_3': [1., 2., 0.5],
+        #                  'conv7': [1., 2., 3., 0.5, .333],
+        #                  'conv8_2': [1., 2., 3., 0.5, .333],
+        #                  'conv9_2': [1., 2., 3., 0.5, .333],
+        #                  'conv10_2': [1., 2., 0.5],
+        #                  'conv11_2': [1., 2., 0.5]}
 
         fmaps = list(fmap_dims.keys())
 
@@ -440,7 +457,7 @@ class SSD300(nn.Module):
 
         return prior_boxes
 
-    def detect_objects(self, predicted_locs, predicted_scores, min_score, max_overlap, top_k):
+    def detect_objects(self, predicted_locs, predicted_scores, min_score, max_overlap, top_k, cpu=False):
         """
         Decipher the 8732 locations and class scores (output of ths SSD300) to detect objects.
 
@@ -453,6 +470,7 @@ class SSD300(nn.Module):
         :param top_k: if there are a lot of resulting detection across all classes, keep only the top 'k'
         :return: detections (boxes, labels, and scores), lists of length batch_size
         """
+
         batch_size = predicted_locs.size(0)
         n_priors = self.priors_cxcy.size(0)
         predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 8732, n_classes)
@@ -463,6 +481,12 @@ class SSD300(nn.Module):
         all_images_scores = list()
 
         assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
+
+        if cpu:
+            device = torch.device("cpu")
+            predicted_locs = predicted_locs.cpu()
+            predicted_scores = predicted_scores.cpu()
+            self.priors_cxcy = self.priors_cxcy.cpu()
 
         for i in range(batch_size):
             # Decode object coordinates from the form we regressed predicted boxes to
@@ -490,10 +514,10 @@ class SSD300(nn.Module):
                 # Sort predicted boxes and scores by scores
                 class_scores, sort_ind = class_scores.sort(dim=0, descending=True)  # (n_qualified), (n_min_score)
 
-                # Control maxium number of hypothesis
-                max_indxs = min(len(sort_ind), 8000)
-                class_scores = class_scores[:max_indxs]
-                sort_ind = sort_ind[:max_indxs]
+                # # Control maxium number of hypothesis
+                # max_indxs = min(len(sort_ind), 8000)
+                # class_scores = class_scores[:max_indxs]
+                # sort_ind = sort_ind[:max_indxs]
                 n_above_min_score = len(sort_ind)
 
                 class_decoded_locs = class_decoded_locs[sort_ind]  # (n_min_score, 4)
