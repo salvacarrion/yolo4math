@@ -288,9 +288,9 @@ class ListDatasetSSD(Dataset):
         bboxes_labels = bboxes_labels[kept_indices]  # Math dimensions
 
         # Keep embedded/isolated (debugging)
-        kept_indices = torch.ByteTensor(bboxes_labels == 2)
-        bboxes_labels = bboxes_labels[kept_indices]
-        bboxes_xyxy_abs = bboxes_xyxy_abs[kept_indices]
+        # kept_indices = torch.ByteTensor(bboxes_labels == 2)
+        # bboxes_labels = bboxes_labels[kept_indices]
+        # bboxes_xyxy_abs = bboxes_xyxy_abs[kept_indices]
 
         # Sanity check III
         # plot_bboxes(img, bboxes_xyxy_abs, title="Augmented Fix ({})".format(img_path))

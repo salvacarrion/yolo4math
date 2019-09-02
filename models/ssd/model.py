@@ -27,7 +27,7 @@ class VGGBase(nn.Module):
 
         self.conv3_1 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
         self.conv3_2 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
-        self.conv3_3 = nn.Conv2d(256, 256, kernel_size=3, padding=1)
+        self.conv3_3 = nn.Conv2d(256, 256, kernel_size=3, padding=1, stride=2)
         self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)  # ceiling (not floor) here for even dims
 
         self.conv4_1 = nn.Conv2d(256, 512, kernel_size=3, padding=1)
@@ -208,11 +208,11 @@ class PredictionConvolutions(nn.Module):
         self.n_classes = n_classes
 
         # Number of prior-boxes we are considering per position in each feature map
-        n_boxes = {'conv4_3': 2,
+        n_boxes = {'conv4_3': 1,
                    'conv7': 2,
-                   'conv8_2': 3,
+                   'conv8_2': 2,
                    'conv9_2': 3,
-                   'conv10_2': 4,
+                   'conv10_2': 3,
                    'conv11_2': 4}
         # n_boxes = {'conv4_3': 4,
         #            'conv7': 6,
@@ -394,7 +394,7 @@ class SSD300(nn.Module):
         #              'conv11_2': 1}
 
         # H, W
-        out1_0, out1_1 = ceil(input_size[0]/2/2/2), ceil(input_size[1]/2/2/2)  # Max pooling
+        out1_0, out1_1 = ceil(input_size[0]/2/2/2/2), ceil(input_size[1]/2/2/2/2)  # Max pooling
         out2_0, out2_1 = ceil(out1_0/2), ceil(out1_1/2)  # Max pooling
         out3_0, out3_1 = ceil(out2_0/2), ceil(out2_1/2)  # Stride 2
         out4_0, out4_1 = ceil(out3_0/2), ceil(out3_1/2)  # Stride 2
@@ -415,12 +415,12 @@ class SSD300(nn.Module):
                       'conv10_2': 0.725,
                       'conv11_2': 0.9}
 
-        aspect_ratios = {'conv4_3': [1.],
-                         'conv7': [1.],
-                         'conv8_2': [1., 2.],
-                         'conv9_2': [1., 2.],
-                         'conv10_2': [1., 2., 0.5],
-                         'conv11_2': [1., 2., 0.5]}
+        aspect_ratios = {'conv4_3':  [1.],
+                         'conv7':    [1., 2.],
+                         'conv8_2':  [1., 3.],
+                         'conv9_2':  [1., 3,  6.],
+                         'conv10_2': [1., 6., 9.],
+                         'conv11_2': [1., 3., 9., 0.5]}
         #
         # aspect_ratios = {'conv4_3': [1., 2., 0.5],
         #                  'conv7': [1., 2., 3., 0.5, .333],
@@ -442,15 +442,15 @@ class SSD300(nn.Module):
                     for ratio in aspect_ratios[fmap]:
                         prior_boxes.append([cx, cy, obj_scales[fmap] * sqrt(ratio), obj_scales[fmap] / sqrt(ratio)])
 
-                        # For an aspect ratio of 1, use an additional prior whose scale is the geometric mean of the
-                        # scale of the current feature map and the scale of the next feature map
-                        if ratio == 1.:
-                            try:
-                                additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[k + 1]])
-                            # For the last feature map, there is no "next" feature map
-                            except IndexError:
-                                additional_scale = 1.
-                            prior_boxes.append([cx, cy, additional_scale, additional_scale])
+                        # # For an aspect ratio of 1, use an additional prior whose scale is the geometric mean of the
+                        # # scale of the current feature map and the scale of the next feature map
+                        # if ratio == 1.:
+                        #     try:
+                        #         additional_scale = sqrt(obj_scales[fmap] * obj_scales[fmaps[k + 1]])
+                        #     # For the last feature map, there is no "next" feature map
+                        #     except IndexError:
+                        #         additional_scale = 1.
+                        #     prior_boxes.append([cx, cy, additional_scale, additional_scale])
 
         prior_boxes = torch.FloatTensor(prior_boxes).to(device)  # (8732, 4)
         prior_boxes.clamp_(0, 1)  # (8732, 4)

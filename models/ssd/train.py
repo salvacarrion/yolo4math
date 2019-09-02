@@ -50,13 +50,13 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
-    parser.add_argument("--input_size", type=int, default=(512, 512), help="size of each image dimension")#(512, 400)
+    parser.add_argument("--input_size", type=int, default=(1024, 1024), help="size of each image dimension")#(512, 400)
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=True, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.1, help="validation split [0..1]")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
-    parser.add_argument("--log_name", type=str, default="SSD-512-512", help="name of the experiment (tensorboard)")
+    parser.add_argument("--log_name", type=str, default="SSD-1024-1024-adam", help="name of the experiment (tensorboard)")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     opt = parser.parse_args()
@@ -102,8 +102,8 @@ if __name__ == "__main__":
             else:
                 not_biases.append(param)
     lr = 1e-4
-    optimizer = torch.optim.SGD(params=[{'params': biases, 'lr': 2 * lr}, {'params': not_biases}],
-                                 lr=lr, momentum=0.9, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(params=[{'params': biases, 'lr': 2 * lr}, {'params': not_biases}],
+                                 lr=lr, weight_decay=5e-4)
 
     grad_clip = None  # clip if gradients are exploding, which may happen at larger batch sizes (sometimes at 32) - you will recognize it by a sorting error in the MuliBox loss calculation
 
@@ -156,7 +156,7 @@ if __name__ == "__main__":
     # writer.add_graph(model, dummy_input, True)
 
     best_loss = 999999999
-    start_epoch = 0 #9 - 1 #20 - 1
+    start_epoch = 0
     batches_done = start_epoch * len(train_loader)
     # Start training
     for epoch in range(start_epoch, opt.epochs):
@@ -212,7 +212,6 @@ if __name__ == "__main__":
             #     # Accumulates gradient before each step
             #
 
-
             # ********* PRINT PROCESS *********
             # Build log and add data to tensorboard
             log_str = "\n---- [Epoch %d/%d, Batch %d/%d] ----\n" % (epoch+1, opt.epochs, batch_i, len(train_loader))
@@ -231,28 +230,28 @@ if __name__ == "__main__":
             log_str += "\nETA: {}".format(time_left)
             print(log_str)
 
-            if (batch_i-1) % int(360/opt.batch_size) == 0:
-                model.eval()
-                print("Saving model... (backup)")
-                torch.save(model, opt.checkpoint_dir + "/ssd_last.pth")
-                print("Saved!")
+            # if (batch_i-1) % int(360/opt.batch_size) == 0:
+            #     model.eval()
+            #     print("Saving model... (backup)")
+            #     torch.save(model, opt.checkpoint_dir + "/ssd_last.pth")
+            #     print("Saved!")
+            #
+            #     # img_path = '/home/salvacarrion/Documents/datasets/VOC2007/JPEGImages/000001.jpg'
+            #     # original_image = Image.open(img_path, mode='r')
+            #     # original_image = original_image.convert('RGB')
+            #     img_path = '/home/salvacarrion/Documents/datasets/equations/1024/10.1.1.1.2018_5.jpg'
+            #     #img_path = '/home/salvacarrion/Documents/datasets/VOC2007/JPEGImages/000001.jpg'
+            #     myimg = detect(model, img_path, min_score=0.2, max_overlap=0.5, top_k=200, class_names=class_names,
+            #                    save_path="output/mine_e{}_{}.jpg".format((epoch+1), batch_i-1),
+            #                    input_size=opt.input_size)
+            #     #myimg.save("output/mine_e{}_{}.jpg".format(epoch-1, batch_i-1), "JPEG")
+            #     # myimg.show()
+            #     model.train()
 
-                # img_path = '/home/salvacarrion/Documents/datasets/VOC2007/JPEGImages/000001.jpg'
-                # original_image = Image.open(img_path, mode='r')
-                # original_image = original_image.convert('RGB')
-                img_path = '/home/salvacarrion/Documents/datasets/equations/1024/10.1.1.1.2018_5.jpg'
-                #img_path = '/home/salvacarrion/Documents/datasets/VOC2007/JPEGImages/000001.jpg'
-                myimg = detect(model, img_path, min_score=0.2, max_overlap=0.5, top_k=200, class_names=class_names,
-                               save_path="output/mine_e{}_{}.jpg".format((epoch+1), batch_i-1),
-                               input_size=opt.input_size)
-                #myimg.save("output/mine_e{}_{}.jpg".format(epoch-1, batch_i-1), "JPEG")
-                # myimg.show()
-                model.train()
-
-            # Evaluate model
-            eval(model, running_loss, epoch_batches_done, batches_done)
+            # # Evaluate model
+            # eval(model, running_loss, epoch_batches_done, batches_done)
         # Evaluate model
-        eval(model, running_loss, epoch_batches_done, batches_done, True)
+        eval(model, running_loss, epoch_batches_done, epoch+1, True)
 
         # Loss
         train_loss = running_loss / epoch_batches_done

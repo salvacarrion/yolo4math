@@ -78,9 +78,11 @@ if __name__ == '__main__':
 
     img_path = '/home/salvacarrion/Documents/datasets/equations/1024/{}'
     class_names = ['background', 'embedded', 'isolated']
-    for p in ["10.1.1.1.2018_5.jpg", "10.1.1.1.2007_11.jpg", "10.1.1.1.2005_13.jpg"]:
-        p = img_path.format(p)
-        detect(model, p, min_score=0.2, max_overlap=0.3, top_k=200, input_size=(512, 400), class_names=class_names)
+    for i, fname in enumerate(["10.1.1.1.2018_5.jpg", "10.1.1.1.2007_11.jpg", "10.1.1.1.2005_13.jpg"]):
+        print("Detecting objects... {}".format(fname))
+        path = img_path.format(fname)
+        detect(model, path, min_score=0.25, max_overlap=0.35, top_k=200, input_size=(1024, 1024),
+               class_names=class_names, save_path="{}_{}".format(i, fname))
 
     #
     # img_path = '/home/salvacarrion/Documents/datasets/VOC2007/JPEGImages/{}'
@@ -90,7 +92,7 @@ if __name__ == '__main__':
     #                "person": 15, "pottedplant": 16, "sheep": 17, "sofa": 18, "train": 19, "tvmonitor": 20}
     # class_names = list(class_names.keys())
     #
-    # for p in ['008344.jpg', '006324.jpg', '0008843.jpg', '008344.jpg', '001262.jpg']:
-    #     p = img_path.format(p)
-    #     detect(model, p, min_score=0.5, max_overlap=0.3, top_k=200, input_size=(300, 300), class_names=class_names)
-    #     ads = 33
+    # for i, fname in enumerate(['008344.jpg', '006324.jpg', '0008843.jpg', '008344.jpg', '001262.jpg']):
+    #     path = img_path.format(fname)
+    #         detect(model, path, min_score=0.5, max_overlap=0.35, top_k=200, input_size=(300, 300),
+    #                class_names=class_names, save_path="{}_{}".format(fname))
