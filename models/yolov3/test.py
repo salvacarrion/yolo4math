@@ -199,9 +199,10 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     data_config = parse_data_config(opt.data_config)
-    test_path = data_config["test"].format(opt.input_size)
-    labels_path = data_config["labels"]
-    class_names = load_classes(data_config["classes"])
+    dataset_path = "/home/salvacarrion/"
+    test_path = dataset_path + data_config["test"].format(opt.input_size)
+    labels_path = dataset_path + data_config["labels"]
+    class_names = load_classes(dataset_path + data_config["classes"])
 
     # Initiate model
     model = Darknet(config_path=opt.model_def, input_size=opt.input_size).to(device)
@@ -230,11 +231,19 @@ if __name__ == "__main__":
     det_boxes, det_labels, det_scores, true_boxes, true_labels = \
         make_predictions(dataloader, model, min_score=opt.conf_thres, max_overlap=opt.nms_thres, top_k=opt.top_k,
                          plot_detections=opt.plot_detections)
+    data = {
+        'det_boxes': det_boxes,
+        'det_labels': det_labels,
+        'det_scores': det_scores,
+        'true_boxes': true_boxes,
+        'true_labels': true_labels,
+    }
+    save_obj(data, "predictions.pkl")
 
     # Confusion matrix
     print("Computing confusion matrix...")
-    confusion_matrix = confusion_matrix(det_boxes, det_labels, det_scores, true_boxes, true_labels, len(class_names),
-                                        ignore_bg=False)
+    confusion_matrix = confusion_matrix(det_boxes, det_labels, det_scores, true_boxes, true_labels, len(class_names), ignore_bg=False)
+    save_obj({'confusion_matrix': confusion_matrix}, "confusion_matrix.pkl")
 
     # Compute stats
     print("Computing stats...")

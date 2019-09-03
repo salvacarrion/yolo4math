@@ -1,6 +1,11 @@
+import os
+import sys
 import torch
 from models.ssd.utils import find_jaccard_overlap
 from utils.utils import img2img, rescale_boxes, plot_bboxes
+
+BASE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, BASE_PATH)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -178,8 +183,10 @@ def plot_predictions(image_paths, images, det_boxes, det_labels, det_scores, tru
 
     for i in range(len(image_paths)):
         use_original = False
-        BASE_PATH = "/home/salvacarrion/Documents/Programming/Python/Projects/yolo4math/"
-        save_path = BASE_PATH + "outputs/{}".format(image_paths[i].split('/')[-1])
+        output_path = BASE_PATH + "/outputs"
+        if not os.path.exists(output_path):
+            os.mkdir(output_path)
+        save_path = "{}/{}".format(output_path, image_paths[i].split('/')[-1])
 
         # Output
         p_bboxes = det_boxes[i].cpu().data.numpy()

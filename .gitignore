@@ -1,6 +1,9 @@
 # Developer environments
 .idea
 **.DS_Store
+*.pkl
+*.json
+outputs/
 
 # Others
 datasets/equations/**/*.jpg
