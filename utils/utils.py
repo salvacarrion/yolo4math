@@ -350,6 +350,12 @@ def rescale_boxes(boxes, current_shape, original_shape, relxyxy=False):
     orig_h, orig_w = original_shape
     this_h, this_w = current_shape
 
+    if relxyxy:
+        boxes[:, 0] *= this_w
+        boxes[:, 1] *= this_h
+        boxes[:, 2] *= this_w
+        boxes[:, 3] *= this_h
+
     # The amount of padding that was added
     pad_x = max(orig_h - orig_w, 0) * (this_w / max(original_shape))
     pad_y = max(orig_w - orig_h, 0) * (this_h / max(original_shape))
@@ -708,8 +714,8 @@ def plot_bboxes(img, bboxes, class_ids=None, class_probs=None, class_names=None,
         class_probs = [0.0] * len(bboxes)
     if class_names is None:
         class_names = ['Unknown'] * len(bboxes)
-    if t_class_ids is None:
-        t_class_ids = [None] * len(bboxes) if t_bboxes is None else [None] * len(t_bboxes)
+    if t_class_ids is None and t_bboxes is not None:
+        t_class_ids = [None] * len(t_bboxes)
 
     # Config plot
     fig, ax = plt.subplots()

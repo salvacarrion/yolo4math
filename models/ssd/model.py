@@ -471,6 +471,8 @@ class SSD300(nn.Module):
         :return: detections (boxes, labels, and scores), lists of length batch_size
         """
 
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         batch_size = predicted_locs.size(0)
         n_priors = self.priors_cxcy.size(0)
         predicted_scores = F.softmax(predicted_scores, dim=2)  # (N, 8732, n_classes)
