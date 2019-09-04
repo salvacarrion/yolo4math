@@ -31,13 +31,16 @@ def save_dataset(data, filename):
     with open(filename, 'w') as f:
         json.dump(data, f)
 
+
 def load_obj(filename):
     with open(filename, 'rb') as f:
-        pickle.open(f)
+        return pickle.load(f)
+
 
 def save_obj(data, filename):
     with open(filename, 'wb') as f:
         pickle.dump(data, f)
+
 
 def get_classes(filename):
     with open(filename) as f:

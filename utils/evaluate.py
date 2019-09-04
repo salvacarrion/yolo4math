@@ -43,6 +43,7 @@ def confusion_matrix(det_boxes, det_labels, det_scores, true_boxes, true_labels,
     det_boxes = torch.cat(det_boxes, dim=0)  # (n_detections, 4)
     det_labels = torch.cat(det_labels, dim=0)  # (n_detections)
     det_scores = torch.cat(det_scores, dim=0)  # (n_detections)
+    det_true_labels = []
 
     assert det_images.size(0) == det_boxes.size(0) == det_labels.size(0) == det_scores.size(0)
 

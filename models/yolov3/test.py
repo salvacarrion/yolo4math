@@ -248,7 +248,7 @@ if __name__ == "__main__":
     # Compute stats
     print("Computing stats...")
     stats = get_stats(confusion_matrix)
-    save_dataset(stats, "YOLO_stats.json")
+    save_dataset(stats, "stats.json")
 
 
     # precision_list = []
