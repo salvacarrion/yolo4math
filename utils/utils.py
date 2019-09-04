@@ -292,6 +292,7 @@ def keep_max_class(image_predictions):
         max_pred = torch.cat((bboxes, objects_conf, class_probs, class_idxs.float()), dim=1)
         max_class_predictions.append(max_pred)
 
+
     return max_class_predictions
 
 

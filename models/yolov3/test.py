@@ -150,7 +150,7 @@ def make_predictions(dataloader, model, min_score=0.01, max_overlap=0.45, top_k=
                 # Parse predictions/targets
                 det_boxes_batch.append(abs2rel(det[..., :4], height=h, width=w))
                 det_labels_batch.append(det[..., -1])
-                det_scores_batch.append(det[..., 4])
+                det_scores_batch.append(det[..., 4]*det[..., 5])  # P(class_i)=P(class_i|obj)*P(obj)
 
             for i in range(batch_size):
                 tg_i = targets[targets[:, 0] == i]
@@ -199,7 +199,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     data_config = parse_data_config(opt.data_config)
-    dataset_path = "/home/salvacarrion/"
+    dataset_path = "/home/salvacarrion/" + "Documents/"
     test_path = dataset_path + data_config["test"].format(opt.input_size)
     labels_path = dataset_path + data_config["labels"]
     class_names = load_classes(dataset_path + data_config["classes"])

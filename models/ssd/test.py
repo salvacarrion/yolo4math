@@ -159,7 +159,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     data_config = parse_data_config(opt.data_config)
-    dataset_path = "/home/salvacarrion/"
+    dataset_path = "/home/salvacarrion/" + "Documents/"
     test_path = dataset_path + data_config["test"].format(opt.input_size[0])
     labels_path = dataset_path + data_config["labels"]
     class_names = load_classes(dataset_path + data_config["classes"])

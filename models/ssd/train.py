@@ -50,13 +50,13 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1, help="size of each image batch")
     parser.add_argument("--data_config", type=str, default=BASE_PATH+"/config/custom.data", help="path to data config file")
     parser.add_argument("--weights_path", type=str, help="if specified starts from checkpoint model")
-    parser.add_argument("--input_size", type=int, default=(1024, 1024), help="size of each image dimension")#(512, 400)
+    parser.add_argument("--input_size", type=int, default=(1024, 800), help="size of each image dimension")#(512, 400)
     parser.add_argument("--n_cpu", type=int, default=1, help="number of cpu threads to use during batch generation")
     parser.add_argument("--shuffle_dataset", type=int, default=True, help="shuffle dataset")
     parser.add_argument("--validation_split", type=float, default=0.1, help="validation split [0..1]")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
-    parser.add_argument("--log_name", type=str, default="SSD-1024-1024-adam", help="name of the experiment (tensorboard)")
+    parser.add_argument("--log_name", type=str, default="SSD-1024-800-adam-3hnm-1a", help="name of the experiment (tensorboard)")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     opt = parser.parse_args()
@@ -68,9 +68,10 @@ if __name__ == "__main__":
 
     # Get data configuration
     data_config = parse_data_config(opt.data_config)
-    images_path = data_config["train"].format(1024)
-    labels_path = data_config["labels"]
-    class_names = load_classes(data_config["classes"])
+    dataset_path = "/home/salvacarrion/" + "Documents/"
+    images_path = dataset_path + data_config["train"].format(1024)
+    labels_path = dataset_path + data_config["labels"]
+    class_names = load_classes(dataset_path + data_config["classes"])
     class_names.insert(0, 'background')
     colors = np.array([[200, 0, 0, 255], [0, 0, 200, 255]], dtype=np.float)/255.0
     #
@@ -109,7 +110,7 @@ if __name__ == "__main__":
 
     # Move to default device
     model = model.to(device)
-    criterion = MultiBoxLoss(priors_cxcy=model.priors_cxcy, alpha=2.0).to(device)
+    criterion = MultiBoxLoss(priors_cxcy=model.priors_cxcy, neg_pos_ratio=3, alpha=1.0).to(device)
 
     # Data augmentation
     data_aug = A.Compose([

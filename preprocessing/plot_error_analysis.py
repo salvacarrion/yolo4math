@@ -26,36 +26,25 @@ true_labels = predictions['true_labels']
 # true_labels = ignore_bg(true_labels)
 
 pred_class, pred_score, pred_iou, true_class = match_classes(det_boxes, det_labels, det_scores, true_boxes, true_labels, n_classes=2)
-pred_correctness = (pred_class == true_class) * (pred_iou > 0.5)
 
 # Set background at index 0
 pred_class += 1
 true_class += 1
+analysis = compute_hoeim(pred_class, pred_iou, true_class)
 
-# Compute ROC curve and ROC area for each class
-fpr = dict()
-tpr = dict()
-roc_auc = dict()
-for c in range(1, 3):
-    y = pred_correctness[true_class == c]  # Correctness of predictions from class c
-    y_scores = pred_score[true_class == c]
-    fpr[c], tpr[c], _ = roc_curve(y.cpu().data.numpy(), y_scores.cpu().data.numpy())
-    roc_auc[c] = auc(fpr[c], tpr[c])
 
-# Plot ROC curve
-plt.figure()
-for i, cls in enumerate(['Embedded', 'Isolated'], 1):
-    plt.plot(fpr[i], tpr[i], label="ROC curve for '{0}' (area = {1:0.2f})"
-                                   ''.format(cls, roc_auc[i]))
+labels = ['Correct', 'Background', 'Localization', 'Other']
+sizes = [analysis[l.lower()] for l in labels]
+explode = (0, 0.05, 0.10, 0.15)
 
-plt.plot([0, 1], [0, 1], 'k--')
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('ROC curve')
+fig, ax = plt.subplots()
+w,l,p = ax.pie(sizes, explode=explode, labels=labels, autopct='%1.1f%%', pctdistance=1.1, labeldistance=None,
+               startangle=15, rotatelabels=True, textprops={'fontsize': 8}, counterclock=False)
+ax.axis('equal')
+
+
+plt.title('YOLOv3')
 plt.legend(loc="lower right")
-plt.savefig('roc-curve-yolov3.eps')
+plt.savefig('error-analysis.eps')
 plt.show()
-
-asdasd =3
+asdsad = 3

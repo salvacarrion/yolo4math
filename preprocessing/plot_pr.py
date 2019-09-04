@@ -6,23 +6,23 @@ sns.set()
 import torch
 from utils.utils import load_dataset, load_obj
 
-
-json_path = "/Users/salvacarrion/Documents/Experiments/tfm/YOLOv3-1024-noweights-6clusters/YOLO_stats.json"
-# json_path = "/Users/salvacarrion/Documents/Experiments/tfm/SSD-1024-1024-adam-alpha2.0/SSD_stats.json"
-raw_data = load_dataset(json_path)
+base_path = "/home/salvacarrion/Documents/Programming/Python/Projects/yolo4math/models/yolov3"
+predictions = load_obj(base_path + "/predictions.pkl")
+confusion_matrix = load_obj(base_path + "/confusion_matrix.pkl")
+stats = load_dataset(base_path + "/stats.json")
 
 
 data_embedded = {
-    'recall': raw_data['0']['recall11'],
-    'precision': raw_data['0']['precision11'],
+    'recall': stats['classes']['0']['recall11'],
+    'precision': stats['classes']['0']['precision11'],
 }
 data_isolated = {
-    'recall': raw_data['1']['recall11'],
-    'precision': raw_data['1']['precision11'],
+    'recall': stats['classes']['1']['recall11'],
+    'precision': stats['classes']['1']['precision11'],
 }
 
 # Plots
-ax2 = sns.lineplot(x='conf', y='precision', data=pd.DataFrame(data), markers=True,  label='Precision')
+# ax2 = sns.lineplot(x='conf', y='precision', data=pd.DataFrame(data_embedded), markers=True,  label='Precision')
 
 # Settings
 plt.figure()
@@ -37,9 +37,9 @@ ax1 = sns.lineplot(x='recall', y='precision', data=pd.DataFrame(data_isolated), 
 # plt.ylabel('Precision')
 plt.ylim([0.0, 1.05])
 plt.xlim([0.0, 1.0])
-plt.legend()
 
-# Show and save
-plt.savefig('1024-rp.eps')
+plt.title('YOLO Recall-Precision curve')
+plt.legend(loc="lower right")
+plt.savefig('pr-curve-yolo.eps')
 plt.show()
 asdas = 3

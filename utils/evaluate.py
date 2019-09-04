@@ -179,6 +179,70 @@ def get_stats(confusion_matrix):
     return metrics
 
 
+def ignore_bg(labels, remove_bg=False):
+    new_labels = []
+    for i in range(len(labels)):
+        labels[i] -= 1
+        if not remove_bg or labels[i][0] >= 0:
+            new_labels.append(labels[i])
+    return new_labels
+
+
+def match_classes(det_boxes, det_labels, det_scores, true_boxes, true_labels, n_classes):
+    """
+    list of detections. Background encoded as label zero
+    """
+    pred_score = []
+    pred_iou = []
+    true_class = []
+    for i, (boxes, labels, scores, t_boxes, true_labels) in \
+            enumerate(zip(det_boxes, det_labels, det_scores, true_boxes, true_labels), 1):
+        print("{}/{}".format(i, len(det_boxes)))
+
+        assert boxes.size(0) == labels.size(0) == scores.size(0)
+        assert t_boxes.size(0) == true_labels.size(0)
+
+        overlaps = find_jaccard_overlap(boxes, t_boxes)  # (1, n_class_objects_in_img)
+        max_overlap, ind = torch.max(overlaps, dim=1)  # (), () - scalars
+        t_labels = true_labels[ind]
+
+        # Keep IOUs
+        pred_iou.append(max_overlap)
+        true_class.append(t_labels)
+
+    # Concatenate results
+    pred_class = torch.cat(det_labels)
+    pred_score = torch.cat(det_scores)
+    pred_iou = torch.cat(pred_iou)
+    true_class = torch.cat(true_class)
+
+    assert pred_class.size(0) == pred_score.size(0) == pred_iou.size(0) == true_class.size(0)
+
+    return pred_class, pred_score, pred_iou, true_class
+
+
+def compute_hoeim(pred_class, pred_iou, true_class):
+    correct_class = pred_class == true_class
+    incorrect_class = pred_class != true_class
+
+    # Hoiem
+    correct = correct_class * (pred_iou > 0.5)
+    localization = correct_class * (pred_iou > 0.1) * (pred_iou <= 0.5)
+    other = incorrect_class * (pred_iou > 0.1)
+    background = pred_iou <= 0.1
+
+    analysis = {
+        'correct': correct.sum().item(),
+        'localization': localization.sum().item(),
+        'other': other.sum().item(),
+        'background': background.sum().item(),
+    }
+
+    assert (analysis['correct'] + analysis['localization'] + analysis['other'] +
+            analysis['background']) == pred_class.size(0)
+    return analysis
+
+
 def plot_predictions(image_paths, images, det_boxes, det_labels, det_scores, true_boxes, true_labels, class_names):
     assert len(det_boxes) == len(det_labels) == len(det_scores) == len(true_boxes) == len(true_labels)
 
