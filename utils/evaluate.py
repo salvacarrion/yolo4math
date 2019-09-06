@@ -64,7 +64,17 @@ def confusion_matrix(det_boxes, det_labels, det_scores, true_boxes, true_labels,
         det_class_boxes = det_boxes[det_labels == c]  # (n_class_detections, 4)
         det_class_scores = det_scores[det_labels == c]  # (n_class_detections)
         n_class_detections = det_class_boxes.size(0)
+
+        # Initialize arrays
+        true_positives = torch.zeros(n_class_detections, dtype=torch.float).to(device)  # (n_class_detections)
+        false_positives = torch.zeros(n_class_detections, dtype=torch.float).to(device)  # (n_class_detections)
+
         if n_class_detections == 0:
+            stats[c] = {'true_positives': true_positives,
+                        'false_positives': false_positives,
+                        'n_detections': int(n_class_detections),
+                        'n_ground_truths': int(n_class_objects),
+                        }
             continue
 
         # Sort detections in decreasing order of confidence/scores
@@ -73,8 +83,6 @@ def confusion_matrix(det_boxes, det_labels, det_scores, true_boxes, true_labels,
         det_class_boxes = det_class_boxes[sort_ind]  # (n_class_detections, 4)
 
         # In the order of decreasing scores, check if true or false positive
-        true_positives = torch.zeros(n_class_detections, dtype=torch.float).to(device)  # (n_class_detections)
-        false_positives = torch.zeros(n_class_detections, dtype=torch.float).to(device)  # (n_class_detections)
         for d in range(n_class_detections):
             this_detection_box = det_class_boxes[d].unsqueeze(0)  # (1, 4)
             this_image = det_class_images[d]  # (), scalar
@@ -154,9 +162,9 @@ def get_stats(confusion_matrix):
         total_gt += int(stats['n_ground_truths'])
         total_det += int(stats['n_detections'])
 
-        recall = float(s_tp / stats['n_ground_truths'])  # TP/(TP+FN)
-        precision = float(s_fp / stats['n_detections'])  # TP/(TP+FP)
-        f1 = 2.0 * (precision * recall) / (precision + recall)
+        recall = float(s_tp / stats['n_ground_truths']) if stats['n_ground_truths'] else 0 # TP/(TP+FN)
+        precision = float(s_fp / stats['n_detections']) if stats['n_detections'] else 0 # TP/(TP+FP)
+        f1 = 2.0 * (precision * recall) / (precision + recall) if (precision + recall) else 0
 
         avg_precision = float(precisions.mean())
         average_precisions[c - 1] = avg_precision  # c is in [1, n_classes - 1]

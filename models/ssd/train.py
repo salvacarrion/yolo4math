@@ -56,7 +56,7 @@ if __name__ == "__main__":
     parser.add_argument("--validation_split", type=float, default=0.1, help="validation split [0..1]")
     parser.add_argument("--checkpoint_dir", type=str, default=BASE_PATH+"/checkpoints", help="path to checkpoint folder")
     parser.add_argument("--logdir", type=str, default=BASE_PATH+"/logs", help="path to logs folder")
-    parser.add_argument("--log_name", type=str, default="SSD-1024-800-adam-3hnm-1a", help="name of the experiment (tensorboard)")
+    parser.add_argument("--log_name", type=str, default="SSD-1024-800-adam-3hnm-1a-new-lr4", help="name of the experiment (tensorboard)")
     parser.add_argument("--evaluation_interval", type=int, default=1, help="interval evaluations on validation set")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
     opt = parser.parse_args()

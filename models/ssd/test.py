@@ -193,16 +193,30 @@ if __name__ == "__main__":
     }
     save_obj(data, "predictions.pkl")
 
+    # For debbuging
+    # data = load_obj('predictions.pkl')
+    # det_boxes = data['det_boxes']
+    # det_labels = data['det_labels']
+    # det_scores = data['det_scores']
+    # true_boxes = data['true_boxes']
+    # true_labels = data['true_labels']
 
     # Confusion matrix
     print("Computing confusion matrix...")
     confusion_matrix = confusion_matrix(det_boxes, det_labels, det_scores, true_boxes, true_labels, len(class_names), ignore_bg=True)
     save_obj({'confusion_matrix': confusion_matrix}, "confusion_matrix.pkl")
+    # confusion_matrix = load_obj('confusion_matrix.pkl')
 
     # Compute stats
     print("Computing stats...")
     stats = get_stats(confusion_matrix)
     save_dataset(stats, "stats.json")
+
+    # Show stats
+    for k, v in stats.items():
+        print("{}: {}".format(k, v))
+
+    print("Done!")
 
     sdasdasd = 33
     #
