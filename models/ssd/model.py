@@ -418,7 +418,7 @@ class SSD300(nn.Module):
         aspect_ratios = {'conv4_3':  [1.],
                          'conv7':    [1., 3.],
                          'conv8_2':  [1., 3.],
-                         'conv9_2':  [1., 3,  6.],
+                         'conv9_2':  [1., 3.,  6.],
                          'conv10_2': [1., 6., 9.],
                          'conv11_2': [1., 3., 9., 0.5]}
         #
@@ -429,7 +429,7 @@ class SSD300(nn.Module):
         #                  'conv10_2': [1., 2., 0.5],
         #                  'conv11_2': [1., 2., 0.5]}
 
-        fmaps = list(fmap_dims.keys())
+        fmaps = ['conv4_3', 'conv7', 'conv9_2', 'conv8_2', 'conv10_2', 'conv11_2']
 
         prior_boxes = []
 
