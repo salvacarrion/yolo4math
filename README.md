@@ -4,7 +4,7 @@ Detecting mathematical expressions in scientific papers using YOLO and SSD
 
 ## YOLO
 
-YOLOv3 to detect mathematical expressions in scientific papers
+Model variant: YOLOv3
 
 The number of filters previous to the YOLO layers must be computed with the following formula:
 
